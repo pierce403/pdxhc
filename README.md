@@ -25,14 +25,17 @@ The production output is `dist/`.
 
 ## Cloudflare Pages
 
-Recommended project settings:
+Preferred setup is Cloudflare Pages Git integration against `pierce403/pdxhc`:
 
 - Project name: `pdxhc`
+- Repository: `pierce403/pdxhc`
 - Build command: `npm run build`
 - Build output directory: `dist`
 - Production branch: `main`
 
-Direct deploy from this checkout:
+Wrangler direct upload is available for manual deployments, but do not use it if you want the Pages project connected to GitHub for automatic deploys. Cloudflare currently treats direct-upload and Git-integrated Pages projects as separate project modes.
+
+Direct-upload fallback:
 
 ```bash
 wrangler pages project create pdxhc --production-branch=main --compatibility-date=2026-07-02
