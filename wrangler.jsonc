@@ -2,5 +2,19 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "pdxhc",
   "compatibility_date": "2026-07-02",
-  "pages_build_output_dir": "./dist"
+  "compatibility_flags": ["nodejs_compat"],
+  "pages_build_output_dir": "./dist",
+  "vars": {
+    "PUBLIC_ORIGIN": "https://pdxhc.org"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pdxhc",
+      "database_id": "81187982-7c5e-4721-8b0b-d2cb967dcda0"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
 }

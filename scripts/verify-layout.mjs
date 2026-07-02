@@ -136,6 +136,29 @@ try {
     if (layout.h1Left === null || layout.h1Left < -1 || layout.h1Right > layout.clientWidth + 1) {
       throw new Error(`${viewport.name} H1 is outside the viewport: ${JSON.stringify(layout)}`);
     }
+
+    await page.locator('#profile').scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: path.join(screenshotDir, `profile-${viewport.name}.png`),
+      fullPage: false
+    });
+
+    const profileLayout = await page.evaluate(() => {
+      const panel = document.querySelector('.account-panel')?.getBoundingClientRect();
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        panelLeft: panel?.left ?? null,
+        panelRight: panel?.right ?? null
+      };
+    });
+
+    if (
+      profileLayout.panelLeft === null ||
+      profileLayout.panelLeft < -1 ||
+      profileLayout.panelRight > profileLayout.clientWidth + 1
+    ) {
+      throw new Error(`${viewport.name} profile panel is outside the viewport: ${JSON.stringify(profileLayout)}`);
+    }
   }
 
   await page.setViewportSize({ width: 1200, height: 630 });

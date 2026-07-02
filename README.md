@@ -2,13 +2,15 @@
 
 Landing page for the Portland Hacker Collective, a local directory for hackers and businesses coordinating short-term technical contracts.
 
-Live site: <https://pdxhc.pages.dev>
+Live site: <https://pdxhc.org>
 
 ## Stack
 
 - Vue on Vite for the frontend.
-- Cloudflare Pages for static deploys now.
-- `wrangler.jsonc` is present so the project can grow into Pages Functions, Workers bindings, D1, KV, R2, or auth-backed app routes later.
+- Cloudflare Pages for deploys.
+- Cloudflare Pages Functions for auth and profile APIs.
+- Cloudflare D1 for OAuth state, OAuth sessions, first-party sessions, and profile data.
+- ATProto OAuth for Bluesky login.
 
 ## Local development
 
@@ -48,6 +50,20 @@ Preview the Cloudflare Pages output locally:
 ```bash
 npm run cf:preview
 ```
+
+Apply the D1 schema locally:
+
+```bash
+wrangler d1 migrations apply DB --local --persist-to .wrangler/state
+```
+
+Apply the D1 schema remotely:
+
+```bash
+wrangler d1 migrations apply DB --remote
+```
+
+The production D1 binding is named `DB` and points at the `pdxhc` database.
 
 ## DNS
 
