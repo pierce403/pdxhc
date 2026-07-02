@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "og:image": "node scripts/generate-og-card.mjs",
+    "verify:layout": "node scripts/verify-layout.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "cf:preview": "npm run build && wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=pdxhc"
@@ -16,6 +18,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "latest",
+    "playwright": "^1.61.1",
     "vite": "latest",
     "wrangler": "latest"
   }
