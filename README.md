@@ -2,6 +2,8 @@
 
 Landing page for the Portland Hacker Collective, a local directory for hackers and businesses coordinating short-term technical contracts.
 
+Live site: <https://pdxhc.pages.dev>
+
 ## Stack
 
 - Vue on Vite for the frontend.
@@ -33,12 +35,11 @@ Preferred setup is Cloudflare Pages Git integration against `pierce403/pdxhc`:
 - Build output directory: `dist`
 - Production branch: `main`
 
-Wrangler direct upload is available for manual deployments, but do not use it if you want the Pages project connected to GitHub for automatic deploys. Cloudflare currently treats direct-upload and Git-integrated Pages projects as separate project modes.
+Pushing to `main` deploys through the Cloudflare Pages GitHub integration.
 
-Direct-upload fallback:
+Manual deploy fallback for the existing Pages project:
 
 ```bash
-wrangler pages project create pdxhc --production-branch=main --compatibility-date=2026-07-02
 npm run deploy
 ```
 
