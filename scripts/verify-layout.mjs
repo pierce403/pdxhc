@@ -159,6 +159,35 @@ try {
     ) {
       throw new Error(`${viewport.name} profile panel is outside the viewport: ${JSON.stringify(profileLayout)}`);
     }
+
+    await page.locator('#directory').scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: path.join(screenshotDir, `directory-${viewport.name}.png`),
+      fullPage: false
+    });
+
+    const directoryLayout = await page.evaluate(() => {
+      const search = document.querySelector('.directory-search')?.getBoundingClientRect();
+      const grid = document.querySelector('.directory-grid, .directory-state')?.getBoundingClientRect();
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        searchLeft: search?.left ?? null,
+        searchRight: search?.right ?? null,
+        listingLeft: grid?.left ?? null,
+        listingRight: grid?.right ?? null
+      };
+    });
+
+    if (
+      directoryLayout.searchLeft === null ||
+      directoryLayout.searchLeft < -1 ||
+      directoryLayout.searchRight > directoryLayout.clientWidth + 1 ||
+      directoryLayout.listingLeft === null ||
+      directoryLayout.listingLeft < -1 ||
+      directoryLayout.listingRight > directoryLayout.clientWidth + 1
+    ) {
+      throw new Error(`${viewport.name} directory layout is outside the viewport: ${JSON.stringify(directoryLayout)}`);
+    }
   }
 
   await page.setViewportSize({ width: 1200, height: 630 });

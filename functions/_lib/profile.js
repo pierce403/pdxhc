@@ -84,6 +84,50 @@ export async function updateProfile(env, did, input) {
   return getProfile(env, did);
 }
 
+export async function listProfiles(env, query = '') {
+  const sanitizedQuery = optionalString(query, 120);
+  const baseWhere =
+    `(COALESCE(handle, '') <> ''
+      OR COALESCE(display_name, '') <> ''
+      OR COALESCE(headline, '') <> ''
+      OR COALESCE(availability, '') <> ''
+      OR COALESCE(location, '') <> ''
+      OR COALESCE(bio, '') <> ''
+      OR COALESCE(skills, '[]') <> '[]')`;
+
+  let statement;
+  if (sanitizedQuery) {
+    const term = `%${escapeLike(sanitizedQuery.toLowerCase())}%`;
+    statement = env.DB.prepare(
+      `SELECT ${PROFILE_FIELDS.join(', ')}
+       FROM profiles
+       WHERE ${baseWhere}
+         AND (
+           LOWER(COALESCE(handle, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(display_name, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(headline, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(location, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(availability, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(skills, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(bio, '')) LIKE ?1 ESCAPE '\\'
+         )
+       ORDER BY updated_at DESC
+       LIMIT 50`
+    ).bind(term);
+  } else {
+    statement = env.DB.prepare(
+      `SELECT ${PROFILE_FIELDS.join(', ')}
+       FROM profiles
+       WHERE ${baseWhere}
+       ORDER BY updated_at DESC
+       LIMIT 50`
+    );
+  }
+
+  const result = await statement.all();
+  return (result.results || []).map(normalizeDirectoryProfile);
+}
+
 export function normalizeProfileRow(row) {
   return {
     did: row.did,
@@ -98,6 +142,23 @@ export function normalizeProfileRow(row) {
     bio: row.bio || '',
     created_at: row.created_at || null,
     updated_at: row.updated_at || null
+  };
+}
+
+function normalizeDirectoryProfile(row) {
+  const profile = normalizeProfileRow(row);
+  return {
+    did: profile.did,
+    handle: profile.handle,
+    display_name: profile.display_name,
+    avatar_url: profile.avatar_url,
+    headline: profile.headline,
+    location: profile.location,
+    availability: profile.availability,
+    skills: profile.skills,
+    website: profile.website,
+    bio: profile.bio,
+    updated_at: profile.updated_at
   };
 }
 
@@ -164,4 +225,8 @@ function optionalString(value, maxLength) {
   }
 
   return value.trim().slice(0, maxLength);
+}
+
+function escapeLike(value) {
+  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
 }

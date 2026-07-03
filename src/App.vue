@@ -7,39 +7,20 @@ import {
   BriefcaseBusiness,
   CalendarClock,
   Check,
+  ExternalLink,
   Globe2,
   LoaderCircle,
   LogIn,
   LogOut,
   MapPin,
+  RefreshCw,
   Save,
   Search,
   ShieldCheck,
   UserRoundPlus,
-  Wrench
+  UsersRound
 } from '@lucide/vue';
 import heroUrl from './assets/pdxhc-hero.webp';
-
-const profileCards = [
-  {
-    name: 'Embedded systems',
-    focus: 'Hardware bring-up, sensor pipelines, field debugging',
-    availability: 'Fractional',
-    tags: ['Firmware', 'IoT', 'Bench testing']
-  },
-  {
-    name: 'Web operations',
-    focus: 'Fast internal tools, integrations, deployment cleanup',
-    availability: '2-6 week blocks',
-    tags: ['Vue', 'Workers', 'Automation']
-  },
-  {
-    name: 'Security review',
-    focus: 'Threat modeling, basic hardening, incident triage',
-    availability: 'Short audits',
-    tags: ['AppSec', 'Cloudflare', 'Response']
-  }
-];
 
 const businessNeeds = [
   'A prototype that needs a practical technical owner',
@@ -63,6 +44,11 @@ const saveNotice = ref('');
 const saveError = ref('');
 const profile = ref(null);
 const skillsText = ref('');
+const directoryProfiles = ref([]);
+const directoryQuery = ref('');
+const directoryLoading = ref(true);
+const directoryError = ref('');
+let directorySearchTimer;
 
 const profileForm = reactive({
   display_name: '',
@@ -74,10 +60,20 @@ const profileForm = reactive({
 });
 
 const isAuthenticated = computed(() => Boolean(profile.value?.did));
+const directorySummary = computed(() => {
+  const count = directoryProfiles.value.length;
+  const profileLabel = count === 1 ? 'profile' : 'profiles';
+  return directoryQuery.value.trim()
+    ? `${count} matching ${profileLabel}`
+    : `${count} listed ${profileLabel}`;
+});
+const emptyDirectoryMessage = computed(() =>
+  directoryQuery.value.trim() ? 'No matching profiles yet' : 'No profiles listed yet'
+);
 
 onMounted(async () => {
   readAuthRedirect();
-  await loadSession();
+  await Promise.all([loadSession(), loadDirectory()]);
 });
 
 async function loadSession() {
@@ -158,11 +154,52 @@ async function saveProfile() {
 
     applyProfile(data.profile);
     saveNotice.value = 'Profile saved';
+    await loadDirectory();
   } catch (error) {
     saveError.value = error instanceof Error ? error.message : 'Unable to save profile';
   } finally {
     saveLoading.value = false;
   }
+}
+
+async function loadDirectory() {
+  directoryLoading.value = true;
+  directoryError.value = '';
+
+  try {
+    const params = new URLSearchParams();
+    const query = directoryQuery.value.trim();
+    if (query) {
+      params.set('q', query);
+    }
+
+    const response = await fetch(`/api/directory${params.size ? `?${params}` : ''}`, {
+      headers: { accept: 'application/json' }
+    });
+    if (!response.headers.get('content-type')?.includes('application/json')) {
+      directoryProfiles.value = [];
+      return;
+    }
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !Array.isArray(data.profiles)) {
+      throw new Error(data.error || 'Unable to load directory');
+    }
+
+    directoryProfiles.value = data.profiles;
+  } catch (error) {
+    directoryError.value = error instanceof Error ? error.message : 'Unable to load directory';
+  } finally {
+    directoryLoading.value = false;
+  }
+}
+
+function scheduleDirectorySearch() {
+  window.clearTimeout(directorySearchTimer);
+  directorySearchTimer = window.setTimeout(() => {
+    loadDirectory();
+  }, 250);
 }
 
 async function logout() {
@@ -209,6 +246,34 @@ function readAuthRedirect() {
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }
 }
+
+function profileName(directoryProfile) {
+  return directoryProfile.display_name || directoryProfile.handle || 'Local hacker';
+}
+
+function profileSummary(directoryProfile) {
+  return (
+    directoryProfile.headline ||
+    directoryProfile.bio ||
+    'Available for short local technical contracts.'
+  );
+}
+
+function profileLink(directoryProfile) {
+  if (directoryProfile.website) {
+    return directoryProfile.website;
+  }
+
+  if (directoryProfile.handle) {
+    return `https://bsky.app/profile/${directoryProfile.handle}`;
+  }
+
+  return '';
+}
+
+function profileLinkLabel(directoryProfile) {
+  return directoryProfile.website ? 'Website' : 'Bluesky';
+}
 </script>
 
 <template>
@@ -238,7 +303,7 @@ function readAuthRedirect() {
             <UserRoundPlus :size="19" aria-hidden="true" />
             Join as a hacker
           </a>
-          <a class="button secondary" href="#businesses">
+          <a class="button secondary" href="#directory">
             <Search :size="19" aria-hidden="true" />
             Find local help
           </a>
@@ -413,21 +478,92 @@ function readAuthRedirect() {
     </section>
 
     <section class="directory-section" id="directory">
-      <div class="section-heading">
-        <p class="section-kicker">Early directory preview</p>
-        <h2>Profiles will be built for scanning, not résumé theater.</h2>
+      <div class="directory-heading">
+        <div class="section-heading">
+          <p class="section-kicker">Directory</p>
+          <h2>Search local hacker profiles.</h2>
+        </div>
+
+        <form class="directory-search" role="search" @submit.prevent="loadDirectory">
+          <label class="search-field" for="directory-search">
+            <Search :size="19" aria-hidden="true" />
+            <input
+              id="directory-search"
+              v-model="directoryQuery"
+              type="search"
+              autocomplete="off"
+              placeholder="Search skills, availability, handle"
+              @input="scheduleDirectorySearch"
+            />
+          </label>
+          <button class="icon-button search-submit" type="submit" title="Search directory" aria-label="Search directory">
+            <Search :size="19" aria-hidden="true" />
+          </button>
+          <button class="icon-button" type="button" title="Refresh directory" aria-label="Refresh directory" @click="loadDirectory">
+            <RefreshCw :class="{ spinner: directoryLoading }" :size="19" aria-hidden="true" />
+          </button>
+        </form>
       </div>
-      <div class="directory-grid">
-        <article v-for="profile in profileCards" :key="profile.name" class="profile-card">
+
+      <div class="directory-meta" aria-live="polite">
+        <span>{{ directorySummary }}</span>
+      </div>
+
+      <div v-if="directoryLoading" class="directory-state">
+        <LoaderCircle class="spinner" :size="22" aria-hidden="true" />
+        <span>Loading directory</span>
+      </div>
+
+      <div v-else-if="directoryError" class="directory-state error-state">
+        <span>{{ directoryError }}</span>
+        <button class="button profile-link" type="button" @click="loadDirectory">Try again</button>
+      </div>
+
+      <div v-else-if="directoryProfiles.length === 0" class="directory-state empty-state">
+        <UsersRound :size="24" aria-hidden="true" />
+        <span>{{ emptyDirectoryMessage }}</span>
+      </div>
+
+      <div v-else class="directory-grid">
+        <article v-for="person in directoryProfiles" :key="person.did" class="profile-card">
+          <div class="directory-profile-head">
+            <img
+              v-if="person.avatar_url"
+              class="directory-avatar"
+              :src="person.avatar_url"
+              alt=""
+              width="48"
+              height="48"
+            />
+            <span v-else class="directory-avatar avatar-fallback"><AtSign :size="20" aria-hidden="true" /></span>
+            <div>
+              <h3>{{ profileName(person) }}</h3>
+              <p v-if="person.handle" class="handle-line">@{{ person.handle }}</p>
+            </div>
+          </div>
+
           <div class="profile-topline">
-            <span class="profile-icon"><Wrench :size="20" aria-hidden="true" /></span>
-            <span>{{ profile.availability }}</span>
+            <span><MapPin :size="16" aria-hidden="true" /> {{ person.location || 'Portland metro' }}</span>
+            <span>{{ person.availability || 'Availability open' }}</span>
           </div>
-          <h3>{{ profile.name }}</h3>
-          <p>{{ profile.focus }}</p>
-          <div class="tag-row">
-            <span v-for="tag in profile.tags" :key="tag">{{ tag }}</span>
+
+          <p>{{ profileSummary(person) }}</p>
+          <p v-if="person.headline && person.bio" class="profile-bio">{{ person.bio }}</p>
+
+          <div v-if="person.skills.length" class="tag-row">
+            <span v-for="skill in person.skills" :key="`${person.did}-${skill}`">{{ skill }}</span>
           </div>
+
+          <a
+            v-if="profileLink(person)"
+            class="button profile-link"
+            :href="profileLink(person)"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {{ profileLinkLabel(person) }}
+            <ExternalLink :size="16" aria-hidden="true" />
+          </a>
         </article>
       </div>
     </section>
@@ -435,7 +571,7 @@ function readAuthRedirect() {
     <section class="cta-band">
       <div>
         <p class="section-kicker">Now taking shape</p>
-        <h2>Profiles are live first. Search, directory filters, and business owner flows come next.</h2>
+        <h2>Profiles and search are live. Directory filters and business owner flows come next.</h2>
       </div>
       <a class="button primary" href="mailto:hello@pdxhc.org">
         <BriefcaseBusiness :size="19" aria-hidden="true" />
