@@ -65,6 +65,12 @@ wrangler d1 migrations apply DB --remote
 
 The production D1 binding is named `DB` and points at the `pdxhc` database.
 
+## App routes
+
+- `/account` is the authenticated profile editor.
+- `/u/<did>` is a public profile page, for example `/u/did:plc:example`.
+- `/api/directory` returns searchable public profiles for the directory.
+
 ## DNS
 
 Exact DNS records depend on the domain or subdomain selected for the site.

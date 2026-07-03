@@ -1,4 +1,3 @@
-import { Agent } from '@atproto/api';
 import { NodeOAuthClient } from '@atproto/oauth-client-node';
 import { createD1RequestLock, createJsonStore } from './data.js';
 
@@ -36,16 +35,27 @@ export function createOAuthClient(env) {
   });
 }
 
-export async function getBlueskyProfile(session) {
-  const agent = new Agent(session);
-  const actor = session.did;
-
+export async function getBlueskyProfile(sessionOrDid) {
+  const actor = typeof sessionOrDid === 'string' ? sessionOrDid : sessionOrDid.did;
   if (!actor) {
     return {};
   }
 
-  const response = await agent.getProfile({ actor });
-  return response.data || {};
+  const url = new URL('https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile');
+  url.searchParams.set('actor', actor);
+
+  const response = await fetchWithoutRedirects(url, {
+    headers: {
+      accept: 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    response.body?.cancel?.();
+    throw new Error(`Unable to fetch Bluesky profile: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 function createWorkersDidResolver() {

@@ -5,11 +5,13 @@ const PROFILE_FIELDS = [
   'handle',
   'display_name',
   'avatar_url',
+  'banner_url',
   'headline',
   'location',
   'availability',
   'skills',
   'website',
+  'linkedin_url',
   'bio',
   'created_at',
   'updated_at'
@@ -36,19 +38,21 @@ export async function upsertProfileFromBluesky(env, did, bskyProfile = {}) {
   const handle = optionalString(bskyProfile.handle, 253);
   const displayName = optionalString(bskyProfile.displayName, 80);
   const avatar = optionalString(bskyProfile.avatar, 500);
+  const banner = optionalString(bskyProfile.banner, 500);
   const bio = optionalString(bskyProfile.description, 600);
 
   await env.DB.prepare(
-    `INSERT INTO profiles (did, handle, display_name, avatar_url, bio, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, unixepoch())
+    `INSERT INTO profiles (did, handle, display_name, avatar_url, banner_url, bio, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
      ON CONFLICT(did) DO UPDATE SET
        handle = excluded.handle,
        avatar_url = COALESCE(NULLIF(excluded.avatar_url, ''), profiles.avatar_url),
+       banner_url = COALESCE(NULLIF(excluded.banner_url, ''), profiles.banner_url),
        display_name = COALESCE(NULLIF(profiles.display_name, ''), excluded.display_name),
        bio = COALESCE(NULLIF(profiles.bio, ''), excluded.bio),
        updated_at = unixepoch()`
   )
-    .bind(did, handle, displayName, avatar, bio)
+    .bind(did, handle, displayName, avatar, banner, bio)
     .run();
 
   return getProfile(env, did);
@@ -65,9 +69,10 @@ export async function updateProfile(env, did, input) {
          availability = ?4,
          skills = ?5,
          website = ?6,
-         bio = ?7,
+         linkedin_url = ?7,
+         bio = ?8,
          updated_at = unixepoch()
-     WHERE did = ?8`
+     WHERE did = ?9`
   )
     .bind(
       profile.display_name,
@@ -76,6 +81,7 @@ export async function updateProfile(env, did, input) {
       profile.availability,
       JSON.stringify(profile.skills),
       profile.website,
+      profile.linkedin_url,
       profile.bio,
       did
     )
@@ -92,6 +98,8 @@ export async function listProfiles(env, query = '') {
       OR COALESCE(headline, '') <> ''
       OR COALESCE(availability, '') <> ''
       OR COALESCE(location, '') <> ''
+      OR COALESCE(website, '') <> ''
+      OR COALESCE(linkedin_url, '') <> ''
       OR COALESCE(bio, '') <> ''
       OR COALESCE(skills, '[]') <> '[]')`;
 
@@ -108,6 +116,8 @@ export async function listProfiles(env, query = '') {
            OR LOWER(COALESCE(headline, '')) LIKE ?1 ESCAPE '\\'
            OR LOWER(COALESCE(location, '')) LIKE ?1 ESCAPE '\\'
            OR LOWER(COALESCE(availability, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(website, '')) LIKE ?1 ESCAPE '\\'
+           OR LOWER(COALESCE(linkedin_url, '')) LIKE ?1 ESCAPE '\\'
            OR LOWER(COALESCE(skills, '')) LIKE ?1 ESCAPE '\\'
            OR LOWER(COALESCE(bio, '')) LIKE ?1 ESCAPE '\\'
          )
@@ -134,11 +144,13 @@ export function normalizeProfileRow(row) {
     handle: row.handle || '',
     display_name: row.display_name || '',
     avatar_url: row.avatar_url || '',
+    banner_url: row.banner_url || '',
     headline: row.headline || '',
     location: row.location || '',
     availability: row.availability || '',
     skills: parseSkills(row.skills),
     website: row.website || '',
+    linkedin_url: row.linkedin_url || '',
     bio: row.bio || '',
     created_at: row.created_at || null,
     updated_at: row.updated_at || null
@@ -152,11 +164,13 @@ function normalizeDirectoryProfile(row) {
     handle: profile.handle,
     display_name: profile.display_name,
     avatar_url: profile.avatar_url,
+    banner_url: profile.banner_url,
     headline: profile.headline,
     location: profile.location,
     availability: profile.availability,
     skills: profile.skills,
     website: profile.website,
+    linkedin_url: profile.linkedin_url,
     bio: profile.bio,
     updated_at: profile.updated_at
   };
@@ -164,6 +178,7 @@ function normalizeDirectoryProfile(row) {
 
 function sanitizeProfileInput(input) {
   const website = optionalString(input.website, 200);
+  const linkedinUrl = optionalString(input.linkedin_url, 240);
 
   return {
     display_name: optionalString(input.display_name, 80),
@@ -172,6 +187,7 @@ function sanitizeProfileInput(input) {
     availability: optionalString(input.availability, 80),
     skills: sanitizeSkills(input.skills),
     website: validateWebsite(website),
+    linkedin_url: validateLinkedInUrl(linkedinUrl),
     bio: optionalString(input.bio, 600)
   };
 }
@@ -214,6 +230,30 @@ function validateWebsite(value) {
 
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new HttpError('Website must use http or https', 422);
+  }
+
+  return url.toString();
+}
+
+function validateLinkedInUrl(value) {
+  if (!value) {
+    return '';
+  }
+
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new HttpError('LinkedIn must be a valid URL', 422);
+  }
+
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new HttpError('LinkedIn must use http or https', 422);
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (hostname !== 'linkedin.com' && !hostname.endsWith('.linkedin.com')) {
+    throw new HttpError('LinkedIn URL must be on linkedin.com', 422);
   }
 
   return url.toString();

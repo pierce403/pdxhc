@@ -11,6 +11,21 @@ const screenshotDir = path.join(root, 'tmp/playwright');
 const chromePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
 const port = Number(process.env.VERIFY_LAYOUT_PORT || 4173);
 const baseUrl = `http://127.0.0.1:${port}`;
+const mockProfile = {
+  did: 'did:plc:layouttest',
+  handle: 'layout.bsky.social',
+  display_name: 'Layout Tester',
+  avatar_url: '',
+  banner_url: '',
+  headline: 'Cloudflare Workers, Vue, and app security',
+  location: 'Portland, OR',
+  availability: 'Fractional contracts',
+  skills: ['Cloudflare Workers', 'Vue', 'AppSec'],
+  website: 'https://example.com',
+  linkedin_url: 'https://www.linkedin.com/in/layouttester',
+  bio: 'Builds practical web apps, deployment pipelines, and security-minded internal tools for local teams.',
+  updated_at: 1783120000
+};
 
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -27,6 +42,26 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url || '/', baseUrl);
     const requestedPath = decodeURIComponent(url.pathname);
+
+    if (requestedPath === '/api/auth/session') {
+      const isMockAuthenticated = request.headers.cookie?.includes('mock-auth=1');
+      response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ authenticated: isMockAuthenticated, profile: isMockAuthenticated ? mockProfile : null }));
+      return;
+    }
+
+    if (requestedPath === '/api/directory') {
+      response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ profiles: [mockProfile] }));
+      return;
+    }
+
+    if (requestedPath === `/api/profiles/${mockProfile.did}`) {
+      response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ profile: mockProfile }));
+      return;
+    }
+
     const normalizedPath = requestedPath === '/' ? '/index.html' : requestedPath;
     const filePath = path.normalize(path.join(distDir, normalizedPath));
 
@@ -187,6 +222,91 @@ try {
       directoryLayout.listingRight > directoryLayout.clientWidth + 1
     ) {
       throw new Error(`${viewport.name} directory layout is outside the viewport: ${JSON.stringify(directoryLayout)}`);
+    }
+
+    await page.goto(`${baseUrl}/account`, { waitUntil: 'networkidle' });
+    await page.screenshot({
+      path: path.join(screenshotDir, `account-${viewport.name}.png`),
+      fullPage: false
+    });
+
+    const accountLayout = await page.evaluate(() => {
+      const shell = document.querySelector('.page-shell')?.getBoundingClientRect();
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        shellLeft: shell?.left ?? null,
+        shellRight: shell?.right ?? null
+      };
+    });
+
+    if (
+      accountLayout.shellLeft === null ||
+      accountLayout.shellLeft < -1 ||
+      accountLayout.shellRight > accountLayout.clientWidth + 1
+    ) {
+      throw new Error(`${viewport.name} account layout is outside the viewport: ${JSON.stringify(accountLayout)}`);
+    }
+
+    await page.context().addCookies([
+      {
+        name: 'mock-auth',
+        value: '1',
+        domain: '127.0.0.1',
+        path: '/'
+      }
+    ]);
+    await page.goto(`${baseUrl}/account`, { waitUntil: 'networkidle' });
+    await page.screenshot({
+      path: path.join(screenshotDir, `account-auth-${viewport.name}.png`),
+      fullPage: false
+    });
+
+    const editorLayout = await page.evaluate(() => {
+      const hero = document.querySelector('.profile-hero-card')?.getBoundingClientRect();
+      const editor = document.querySelector('.editor-layout')?.getBoundingClientRect();
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        heroLeft: hero?.left ?? null,
+        heroRight: hero?.right ?? null,
+        editorLeft: editor?.left ?? null,
+        editorRight: editor?.right ?? null
+      };
+    });
+
+    if (
+      editorLayout.heroLeft === null ||
+      editorLayout.heroLeft < -1 ||
+      editorLayout.heroRight > editorLayout.clientWidth + 1 ||
+      editorLayout.editorLeft === null ||
+      editorLayout.editorLeft < -1 ||
+      editorLayout.editorRight > editorLayout.clientWidth + 1
+    ) {
+      throw new Error(`${viewport.name} account editor layout is outside the viewport: ${JSON.stringify(editorLayout)}`);
+    }
+
+    await page.context().clearCookies();
+
+    await page.goto(`${baseUrl}/u/${mockProfile.did}`, { waitUntil: 'networkidle' });
+    await page.screenshot({
+      path: path.join(screenshotDir, `public-profile-${viewport.name}.png`),
+      fullPage: false
+    });
+
+    const publicLayout = await page.evaluate(() => {
+      const card = document.querySelector('.profile-hero-card')?.getBoundingClientRect();
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        cardLeft: card?.left ?? null,
+        cardRight: card?.right ?? null
+      };
+    });
+
+    if (
+      publicLayout.cardLeft === null ||
+      publicLayout.cardLeft < -1 ||
+      publicLayout.cardRight > publicLayout.clientWidth + 1
+    ) {
+      throw new Error(`${viewport.name} public profile layout is outside the viewport: ${JSON.stringify(publicLayout)}`);
     }
   }
 
