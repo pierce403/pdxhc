@@ -98,6 +98,7 @@ p {
 }
 
 .nav-links {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 22px;
@@ -111,6 +112,98 @@ p {
 
 .nav-links a:hover {
   color: var(--white);
+}
+
+.nav-auth-button {
+  min-height: 46px;
+  max-width: 210px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  color: #15140f;
+  background: #f3c05f;
+  border: 1px solid rgba(10, 18, 15, 0.22);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(10, 18, 15, 0.18);
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.nav-auth-button:hover {
+  background: #ffd06d;
+  transform: translateY(-1px);
+}
+
+.nav-auth-button.authenticated {
+  color: var(--ink);
+  background: rgba(255, 253, 248, 0.94);
+  border-color: rgba(255, 253, 248, 0.34);
+}
+
+.hero .nav-auth-button.authenticated {
+  color: var(--white);
+  background: rgba(255, 253, 248, 0.12);
+  border-color: rgba(255, 253, 248, 0.36);
+}
+
+.app-topbar .nav-auth-button {
+  box-shadow: none;
+}
+
+.nav-auth-icon,
+.nav-auth-avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--white);
+  background: rgba(10, 18, 15, 0.85);
+  border-radius: 8px;
+}
+
+.nav-auth-avatar {
+  object-fit: cover;
+  background: var(--moss);
+}
+
+.nav-auth-button.authenticated .nav-auth-icon {
+  background: var(--moss);
+}
+
+.nav-auth-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  line-height: 1.05;
+}
+
+.nav-auth-status {
+  color: rgba(21, 20, 15, 0.7);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.nav-auth-name {
+  max-width: 132px;
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.92rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero .nav-auth-button.authenticated .nav-auth-status {
+  color: rgba(255, 253, 248, 0.72);
+}
+
+.app-topbar .nav-auth-button.authenticated .nav-auth-status {
+  color: rgba(20, 33, 26, 0.62);
 }
 
 .hero-content {
@@ -1012,7 +1105,7 @@ h2 {
   }
 
   .topbar {
-    align-items: flex-start;
+    align-items: center;
   }
 
   .brand {
@@ -1021,6 +1114,10 @@ h2 {
 
   .nav-links {
     display: none;
+  }
+
+  .nav-auth-button {
+    margin-left: auto;
   }
 
   .hero-content {
@@ -1101,6 +1198,33 @@ h2 {
   .topbar {
     width: 100%;
     padding: 24px 12px 0;
+    gap: 12px;
+  }
+
+  .brand {
+    max-width: 178px;
+  }
+
+  .nav-auth-button {
+    min-height: 42px;
+    gap: 8px;
+    padding: 5px 9px;
+  }
+
+  .nav-auth-icon,
+  .nav-auth-avatar {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+  }
+
+  .nav-auth-status {
+    font-size: 0.82rem;
+    text-transform: none;
+  }
+
+  .nav-auth-name {
+    display: none;
   }
 
   .hero-content {

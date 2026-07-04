@@ -35,7 +35,7 @@ const businessNeeds = [
 const hackerValue = [
   'Keep a current profile for short local contracts',
   'Show availability, specialties, and preferred work shape',
-  'Get matched with businesses that need the work you actually do'
+  'Get discovered by businesses looking for your kind of work'
 ];
 
 const currentPath = ref(window.location.pathname);
@@ -97,6 +97,23 @@ const isAuthenticated = computed(() => Boolean(profile.value?.did));
 const ownProfilePath = computed(() => (profile.value?.did ? publicProfilePath(profile.value) : ''));
 const ownProfileUrl = computed(() =>
   ownProfilePath.value ? `${window.location.origin}${ownProfilePath.value}` : ''
+);
+const authNavName = computed(() => {
+  if (!profile.value) {
+    return 'Bluesky';
+  }
+
+  return profileName(profile.value);
+});
+const authNavStatus = computed(() => {
+  if (sessionLoading.value) {
+    return 'Checking';
+  }
+
+  return isAuthenticated.value ? 'Signed in' : 'Log in';
+});
+const authNavLabel = computed(() =>
+  isAuthenticated.value ? `Signed in as ${authNavName.value}` : 'Log in with Bluesky'
 );
 const isOwnPublicProfile = computed(
   () => Boolean(profile.value?.did && publicProfile.value?.did && profile.value.did === publicProfile.value.did)
@@ -287,7 +304,7 @@ async function loadPublicProfile(did) {
     });
 
     if (!response.headers.get('content-type')?.includes('application/json')) {
-      throw new Error('Profile data is not available in this preview');
+      throw new Error('Profile data is unavailable right now');
     }
 
     const data = await response.json().catch(() => ({}));
@@ -472,8 +489,32 @@ function profileCoverStyle(profileLike) {
             <a href="#hackers" @click.prevent="navigateHomeSection('#hackers')">Hackers</a>
             <a href="#profile" @click.prevent="navigateHomeSection('#profile')">Profile</a>
             <a href="#directory" @click.prevent="navigateHomeSection('#directory')">Directory</a>
-            <a href="/account" @click.prevent="navigate('/account')">Account</a>
           </div>
+          <a
+            class="nav-auth-button"
+            :class="{ authenticated: isAuthenticated }"
+            href="/account"
+            :aria-label="authNavLabel"
+            @click.prevent="navigate('/account')"
+          >
+            <img
+              v-if="isAuthenticated && profile.avatar_url"
+              class="nav-auth-avatar"
+              :src="profile.avatar_url"
+              alt=""
+              width="28"
+              height="28"
+            />
+            <span v-else class="nav-auth-icon">
+              <LoaderCircle v-if="sessionLoading" class="spinner" :size="17" aria-hidden="true" />
+              <UserRound v-else-if="isAuthenticated" :size="17" aria-hidden="true" />
+              <LogIn v-else :size="17" aria-hidden="true" />
+            </span>
+            <span class="nav-auth-copy">
+              <span class="nav-auth-status">{{ authNavStatus }}</span>
+              <span class="nav-auth-name">{{ authNavName }}</span>
+            </span>
+          </a>
         </nav>
 
         <div id="top" class="hero-content">
@@ -502,20 +543,20 @@ function profileCoverStyle(profileLike) {
 
       <section class="intro-band" aria-label="What this is">
         <div class="intro-copy">
-          <p class="section-kicker">The directory is being built now</p>
-          <h2>One place for trusted local technical capacity.</h2>
+          <p class="section-kicker">Local technical directory</p>
+          <h2>One place for trusted technical capacity nearby.</h2>
         </div>
         <p>
-          Hackers can start profiles with Bluesky identity, specialties, availability, proof of work, and preferred contract shape. Business owners will browse the directory and start focused conversations with people who understand the local context.
+          Hackers can publish Bluesky-backed profiles with specialties, availability, links, and preferred contract shape. Businesses can search the directory and start focused conversations with people who understand the local context.
         </p>
       </section>
 
       <section class="account-section" id="profile">
         <div class="section-heading account-heading">
           <p class="section-kicker">Hacker profiles</p>
-          <h2>Log in with Bluesky and keep your local contract profile current.</h2>
+          <h2>Create or update your local contract profile.</h2>
           <p>
-            Profiles start with a verified Bluesky identity and add the practical details local businesses need to scan quickly: availability, skills, location, links, and working style.
+            Profiles combine a verified Bluesky identity with the details local businesses need: availability, skills, location, links, and working style.
           </p>
         </div>
 
@@ -736,8 +777,8 @@ function profileCoverStyle(profileLike) {
 
       <section class="cta-band">
         <div>
-          <p class="section-kicker">Now taking shape</p>
-          <h2>Profiles and search are live. Directory filters and business owner flows come next.</h2>
+          <p class="section-kicker">Portland technical help</p>
+          <h2>Profiles are live for local hackers and the businesses looking for them.</h2>
         </div>
         <a class="button primary" href="mailto:hello@pdxhc.org">
           <BriefcaseBusiness :size="19" aria-hidden="true" />
@@ -756,8 +797,32 @@ function profileCoverStyle(profileLike) {
         <div class="nav-links">
           <a href="/#directory" @click.prevent="navigateHomeSection('#directory')">Directory</a>
           <a href="/#businesses" @click.prevent="navigateHomeSection('#businesses')">Businesses</a>
-          <a href="/account" @click.prevent="navigate('/account')">Account</a>
         </div>
+        <a
+          class="nav-auth-button"
+          :class="{ authenticated: isAuthenticated }"
+          href="/account"
+          :aria-label="authNavLabel"
+          @click.prevent="navigate('/account')"
+        >
+          <img
+            v-if="isAuthenticated && profile.avatar_url"
+            class="nav-auth-avatar"
+            :src="profile.avatar_url"
+            alt=""
+            width="28"
+            height="28"
+          />
+          <span v-else class="nav-auth-icon">
+            <LoaderCircle v-if="sessionLoading" class="spinner" :size="17" aria-hidden="true" />
+            <UserRound v-else-if="isAuthenticated" :size="17" aria-hidden="true" />
+            <LogIn v-else :size="17" aria-hidden="true" />
+          </span>
+          <span class="nav-auth-copy">
+            <span class="nav-auth-status">{{ authNavStatus }}</span>
+            <span class="nav-auth-name">{{ authNavName }}</span>
+          </span>
+        </a>
       </nav>
 
       <section class="page-shell account-page">
@@ -765,7 +830,7 @@ function profileCoverStyle(profileLike) {
           <p class="section-kicker">Your PDXHC account</p>
           <h1>Keep your local contract profile ready.</h1>
           <p>
-            This is the working profile business owners will scan first: identity, short headline, availability, skills, and links.
+            Show business owners the details they need to contact you: identity, headline, availability, skills, and links.
           </p>
         </div>
 
@@ -977,8 +1042,32 @@ function profileCoverStyle(profileLike) {
         </a>
         <div class="nav-links">
           <a href="/#directory" @click.prevent="navigateHomeSection('#directory')">Directory</a>
-          <a href="/account" @click.prevent="navigate('/account')">Account</a>
         </div>
+        <a
+          class="nav-auth-button"
+          :class="{ authenticated: isAuthenticated }"
+          href="/account"
+          :aria-label="authNavLabel"
+          @click.prevent="navigate('/account')"
+        >
+          <img
+            v-if="isAuthenticated && profile.avatar_url"
+            class="nav-auth-avatar"
+            :src="profile.avatar_url"
+            alt=""
+            width="28"
+            height="28"
+          />
+          <span v-else class="nav-auth-icon">
+            <LoaderCircle v-if="sessionLoading" class="spinner" :size="17" aria-hidden="true" />
+            <UserRound v-else-if="isAuthenticated" :size="17" aria-hidden="true" />
+            <LogIn v-else :size="17" aria-hidden="true" />
+          </span>
+          <span class="nav-auth-copy">
+            <span class="nav-auth-status">{{ authNavStatus }}</span>
+            <span class="nav-auth-name">{{ authNavName }}</span>
+          </span>
+        </a>
       </nav>
 
       <section class="page-shell public-page">
