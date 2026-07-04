@@ -1,9 +1,10 @@
 import { nowSeconds } from './data.js';
+import type { AppEnv, AppSession, NewAppSession } from './types.js';
 
 export const SESSION_COOKIE = 'pdxhc_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
-export function getCookie(request, name) {
+export function getCookie(request: Request, name: string): string | null {
   const cookieHeader = request.headers.get('cookie') || '';
   for (const part of cookieHeader.split(';')) {
     const [rawKey, ...rawValue] = part.trim().split('=');
@@ -14,7 +15,7 @@ export function getCookie(request, name) {
   return null;
 }
 
-export async function createAppSession(env, did) {
+export async function createAppSession(env: AppEnv, did: string): Promise<NewAppSession> {
   const id = crypto.randomUUID();
   const expiresAt = nowSeconds() + SESSION_TTL_SECONDS;
 
@@ -32,7 +33,7 @@ export async function createAppSession(env, did) {
   };
 }
 
-export async function getAppSession(env, request) {
+export async function getAppSession(env: AppEnv, request: Request): Promise<AppSession | null> {
   const sessionId = getCookie(request, SESSION_COOKIE);
   if (!sessionId) {
     return null;
@@ -44,7 +45,7 @@ export async function getAppSession(env, request) {
      WHERE id = ?1`
   )
     .bind(sessionId)
-    .first();
+    .first<AppSession>();
 
   if (!row) {
     return null;
@@ -58,16 +59,15 @@ export async function getAppSession(env, request) {
   return row;
 }
 
-export async function deleteAppSession(env, sessionId) {
+export async function deleteAppSession(env: AppEnv, sessionId: string): Promise<void> {
   await env.DB.prepare('DELETE FROM app_sessions WHERE id = ?1').bind(sessionId).run();
 }
 
-export function sessionCookie(session) {
+export function sessionCookie(session: NewAppSession): string {
   const maxAge = Math.max(0, session.expiresAt - nowSeconds());
   return `${SESSION_COOKIE}=${encodeURIComponent(session.id)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
-export function clearSessionCookie() {
+export function clearSessionCookie(): string {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
-

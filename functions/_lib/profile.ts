@@ -1,4 +1,13 @@
 import { HttpError } from './http.js';
+import type {
+  AppEnv,
+  BlueskyProfile,
+  DirectoryProfile,
+  Profile,
+  PublicProfile,
+  SkillEndorsement,
+  TimelineEvent
+} from './types.js';
 
 const PROFILE_FIELDS = [
   'did',
@@ -17,19 +26,65 @@ const PROFILE_FIELDS = [
   'updated_at'
 ];
 
-export async function getProfile(env, did) {
+interface ProfileRow {
+  did: string;
+  handle: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  banner_url: string | null;
+  headline: string | null;
+  location: string | null;
+  availability: string | null;
+  skills: string | null;
+  website: string | null;
+  linkedin_url: string | null;
+  bio: string | null;
+  created_at: number | null;
+  updated_at: number | null;
+}
+
+interface SanitizedProfileInput {
+  display_name: string;
+  headline: string;
+  location: string;
+  availability: string;
+  skills: string[];
+  website: string;
+  linkedin_url: string;
+  bio: string;
+}
+
+interface SkillEndorsementRow {
+  skill_key: string;
+  count: number;
+  endorsed_by_viewer: number;
+}
+
+interface TimelineRow {
+  id: string;
+  type: string | null;
+  skill: string | null;
+  message: string | null;
+  actor_did: string | null;
+  created_at: number | null;
+  actor_handle: string | null;
+  actor_display_name: string | null;
+  actor_avatar_url: string | null;
+}
+
+export async function getProfile(env: AppEnv, did: string): Promise<Profile | null> {
   const row = await env.DB.prepare(
     `SELECT ${PROFILE_FIELDS.join(', ')}
      FROM profiles
      WHERE did = ?1`
   )
     .bind(did)
-    .first();
+    .first<ProfileRow>();
 
   return row ? normalizeProfileRow(row) : null;
 }
 
-export async function getPublicProfile(env, did, viewerDid = '') {
+export async function getPublicProfile(env: AppEnv, did: string, viewerDid = ''): Promise<PublicProfile | null> {
   const profile = await getProfile(env, did);
   if (!profile) {
     return null;
@@ -47,12 +102,21 @@ export async function getPublicProfile(env, did, viewerDid = '') {
   };
 }
 
-export async function ensureProfile(env, did) {
+export async function ensureProfile(env: AppEnv, did: string): Promise<Profile> {
   await env.DB.prepare('INSERT OR IGNORE INTO profiles (did) VALUES (?1)').bind(did).run();
-  return getProfile(env, did);
+  const profile = await getProfile(env, did);
+  if (!profile) {
+    throw new Error(`Profile could not be loaded after ensure: ${did}`);
+  }
+
+  return profile;
 }
 
-export async function upsertProfileFromBluesky(env, did, bskyProfile = {}) {
+export async function upsertProfileFromBluesky(
+  env: AppEnv,
+  did: string,
+  bskyProfile: BlueskyProfile = {}
+): Promise<Profile> {
   const handle = optionalString(bskyProfile.handle, 253);
   const displayName = optionalString(bskyProfile.displayName, 80);
   const avatar = optionalString(bskyProfile.avatar, 500);
@@ -73,10 +137,15 @@ export async function upsertProfileFromBluesky(env, did, bskyProfile = {}) {
     .bind(did, handle, displayName, avatar, banner, bio)
     .run();
 
-  return getProfile(env, did);
+  const profile = await getProfile(env, did);
+  if (!profile) {
+    throw new Error(`Profile could not be loaded after Bluesky upsert: ${did}`);
+  }
+
+  return profile;
 }
 
-export async function updateProfile(env, did, input) {
+export async function updateProfile(env: AppEnv, did: string, input: unknown): Promise<Profile> {
   const profile = sanitizeProfileInput(input);
 
   await env.DB.prepare(
@@ -105,10 +174,20 @@ export async function updateProfile(env, did, input) {
     )
     .run();
 
-  return getProfile(env, did);
+  const updatedProfile = await getProfile(env, did);
+  if (!updatedProfile) {
+    throw new HttpError('Profile not found', 404);
+  }
+
+  return updatedProfile;
 }
 
-export async function endorseSkill(env, profileDid, skill, endorserDid) {
+export async function endorseSkill(
+  env: AppEnv,
+  profileDid: string,
+  skill: string,
+  endorserDid: string
+): Promise<PublicProfile> {
   if (profileDid === endorserDid) {
     throw new HttpError('You cannot endorse your own profile', 422);
   }
@@ -140,10 +219,20 @@ export async function endorseSkill(env, profileDid, skill, endorserDid) {
       .run();
   }
 
-  return getPublicProfile(env, profileDid, endorserDid);
+  const publicProfile = await getPublicProfile(env, profileDid, endorserDid);
+  if (!publicProfile) {
+    throw new HttpError('Profile not found', 404);
+  }
+
+  return publicProfile;
 }
 
-export async function removeSkillEndorsement(env, profileDid, skill, endorserDid) {
+export async function removeSkillEndorsement(
+  env: AppEnv,
+  profileDid: string,
+  skill: string,
+  endorserDid: string
+): Promise<PublicProfile> {
   const profile = await getProfile(env, profileDid);
   if (!profile) {
     throw new HttpError('Profile not found', 404);
@@ -163,10 +252,15 @@ export async function removeSkillEndorsement(env, profileDid, skill, endorserDid
     .bind(profileDid, normalizeSkillKey(endorsedSkill), endorserDid)
     .run();
 
-  return getPublicProfile(env, profileDid, endorserDid);
+  const publicProfile = await getPublicProfile(env, profileDid, endorserDid);
+  if (!publicProfile) {
+    throw new HttpError('Profile not found', 404);
+  }
+
+  return publicProfile;
 }
 
-export async function listProfiles(env, query = '') {
+export async function listProfiles(env: AppEnv, query = ''): Promise<DirectoryProfile[]> {
   const sanitizedQuery = optionalString(query, 120);
   const baseWhere =
     `(COALESCE(handle, '') <> ''
@@ -179,7 +273,7 @@ export async function listProfiles(env, query = '') {
       OR COALESCE(bio, '') <> ''
       OR COALESCE(skills, '[]') <> '[]')`;
 
-  let statement;
+  let statement: D1PreparedStatement;
   if (sanitizedQuery) {
     const term = `%${escapeLike(sanitizedQuery.toLowerCase())}%`;
     statement = env.DB.prepare(
@@ -210,11 +304,16 @@ export async function listProfiles(env, query = '') {
     );
   }
 
-  const result = await statement.all();
+  const result = await statement.all<ProfileRow>();
   return (result.results || []).map(normalizeDirectoryProfile);
 }
 
-async function listSkillEndorsements(env, did, skills, viewerDid) {
+async function listSkillEndorsements(
+  env: AppEnv,
+  did: string,
+  skills: string[],
+  viewerDid: string
+): Promise<SkillEndorsement[]> {
   if (!skills.length) {
     return [];
   }
@@ -228,10 +327,10 @@ async function listSkillEndorsements(env, did, skills, viewerDid) {
      GROUP BY skill_key`
   )
     .bind(did, viewerDid || '')
-    .all();
+    .all<SkillEndorsementRow>();
 
   const endorsementMap = new Map(
-    (result.results || []).map((row) => [
+    (result.results || []).map((row): [string, Omit<SkillEndorsement, 'skill' | 'skill_key'>] => [
       row.skill_key,
       {
         count: Number(row.count || 0),
@@ -255,7 +354,7 @@ async function listSkillEndorsements(env, did, skills, viewerDid) {
   });
 }
 
-async function listTimelineEvents(env, did) {
+async function listTimelineEvents(env: AppEnv, did: string): Promise<TimelineEvent[]> {
   const result = await env.DB.prepare(
     `SELECT events.id,
             events.type,
@@ -273,12 +372,12 @@ async function listTimelineEvents(env, did) {
      LIMIT 30`
   )
     .bind(did)
-    .all();
+    .all<TimelineRow>();
 
   return (result.results || []).map(normalizeTimelineEvent);
 }
 
-export function normalizeProfileRow(row) {
+export function normalizeProfileRow(row: ProfileRow): Profile {
   return {
     did: row.did,
     handle: row.handle || '',
@@ -297,7 +396,7 @@ export function normalizeProfileRow(row) {
   };
 }
 
-function normalizeDirectoryProfile(row) {
+function normalizeDirectoryProfile(row: ProfileRow): DirectoryProfile {
   const profile = normalizeProfileRow(row);
   return {
     did: profile.did,
@@ -316,23 +415,24 @@ function normalizeDirectoryProfile(row) {
   };
 }
 
-function sanitizeProfileInput(input) {
-  const website = optionalString(input.website, 200);
-  const linkedinUrl = optionalString(input.linkedin_url, 240);
+function sanitizeProfileInput(input: unknown): SanitizedProfileInput {
+  const source = isRecord(input) ? input : {};
+  const website = optionalString(source.website, 200);
+  const linkedinUrl = optionalString(source.linkedin_url, 240);
 
   return {
-    display_name: optionalString(input.display_name, 80),
-    headline: optionalString(input.headline, 140),
-    location: optionalString(input.location, 80),
-    availability: optionalString(input.availability, 80),
-    skills: sanitizeSkills(input.skills),
+    display_name: optionalString(source.display_name, 80),
+    headline: optionalString(source.headline, 140),
+    location: optionalString(source.location, 80),
+    availability: optionalString(source.availability, 80),
+    skills: sanitizeSkills(source.skills),
     website: validateWebsite(website),
     linkedin_url: validateLinkedInUrl(linkedinUrl),
-    bio: optionalString(input.bio, 600)
+    bio: optionalString(source.bio, 600)
   };
 }
 
-function sanitizeSkills(value) {
+function sanitizeSkills(value: unknown): string[] {
   const rawSkills = Array.isArray(value)
     ? value
     : typeof value === 'string'
@@ -351,16 +451,16 @@ function sanitizeSkills(value) {
   return Array.from(skillMap.values()).slice(0, 12);
 }
 
-function parseSkills(value) {
+function parseSkills(value: unknown): string[] {
   try {
-    const parsed = JSON.parse(value || '[]');
+    const parsed = JSON.parse(typeof value === 'string' ? value : '[]');
     return Array.isArray(parsed) ? parsed.filter((skill) => typeof skill === 'string') : [];
   } catch {
     return [];
   }
 }
 
-function normalizeTimelineEvent(row) {
+function normalizeTimelineEvent(row: TimelineRow): TimelineEvent {
   return {
     id: row.id,
     type: row.type || '',
@@ -376,12 +476,12 @@ function normalizeTimelineEvent(row) {
   };
 }
 
-function findProfileSkill(skills, value) {
+function findProfileSkill(skills: string[], value: string): string {
   const key = normalizeSkillKey(value);
   return skills.find((skill) => normalizeSkillKey(skill) === key) || '';
 }
 
-export function normalizeSkillLabel(value) {
+export function normalizeSkillLabel(value: unknown): string {
   if (typeof value !== 'string') {
     return '';
   }
@@ -389,11 +489,11 @@ export function normalizeSkillLabel(value) {
   return value.trim().replace(/\s+/g, ' ').slice(0, 40);
 }
 
-export function normalizeSkillKey(value) {
+export function normalizeSkillKey(value: unknown): string {
   return normalizeSkillLabel(value).toLowerCase();
 }
 
-function validateWebsite(value) {
+function validateWebsite(value: string): string {
   if (!value) {
     return '';
   }
@@ -412,7 +512,7 @@ function validateWebsite(value) {
   return url.toString();
 }
 
-function validateLinkedInUrl(value) {
+function validateLinkedInUrl(value: string): string {
   if (!value) {
     return '';
   }
@@ -436,7 +536,7 @@ function validateLinkedInUrl(value) {
   return url.toString();
 }
 
-function optionalString(value, maxLength) {
+function optionalString(value: unknown, maxLength: number): string {
   if (typeof value !== 'string') {
     return '';
   }
@@ -444,6 +544,10 @@ function optionalString(value, maxLength) {
   return value.trim().slice(0, maxLength);
 }
 
-function escapeLike(value) {
+function escapeLike(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }

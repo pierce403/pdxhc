@@ -1,4 +1,6 @@
-export function json(data, init = {}) {
+import type { JsonObject } from './types.js';
+
+export function json(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set('content-type', 'application/json; charset=utf-8');
 
@@ -8,7 +10,7 @@ export function json(data, init = {}) {
   });
 }
 
-export function jsonError(message, status = 400, details) {
+export function jsonError(message: string, status = 400, details?: unknown): Response {
   return json(
     {
       error: message,
@@ -18,7 +20,7 @@ export function jsonError(message, status = 400, details) {
   );
 }
 
-export async function readJson(request, maxBytes = 8192) {
+export async function readJson(request: Request, maxBytes = 8192): Promise<unknown> {
   const contentLength = Number(request.headers.get('content-length') || '0');
   if (contentLength > maxBytes) {
     throw new HttpError('Request body is too large', 413);
@@ -31,8 +33,20 @@ export async function readJson(request, maxBytes = 8192) {
   }
 }
 
+export async function readJsonObject(request: Request, maxBytes = 8192): Promise<JsonObject> {
+  const body = await readJson(request, maxBytes);
+  if (!isJsonObject(body)) {
+    throw new HttpError('Expected a JSON object request body', 400);
+  }
+
+  return body;
+}
+
 export class HttpError extends Error {
-  constructor(message, status = 400, details) {
+  status: number;
+  details?: unknown;
+
+  constructor(message: string, status = 400, details?: unknown) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
@@ -40,7 +54,7 @@ export class HttpError extends Error {
   }
 }
 
-export function handleError(error) {
+export function handleError(error: unknown): Response {
   if (error instanceof HttpError) {
     return jsonError(error.message, error.status, error.details);
   }
@@ -49,7 +63,7 @@ export function handleError(error) {
   return jsonError('Unexpected server error', 500);
 }
 
-export function redirect(location, headers = new Headers()) {
+export function redirect(location: string, headers = new Headers()): Response {
   const responseHeaders = new Headers(headers);
   responseHeaders.set('location', location);
   return new Response(null, {
@@ -58,3 +72,6 @@ export function redirect(location, headers = new Headers()) {
   });
 }
 
+function isJsonObject(value: unknown): value is JsonObject {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}

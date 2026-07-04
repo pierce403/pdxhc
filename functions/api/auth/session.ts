@@ -1,8 +1,9 @@
 import { ensureProfile, getProfile } from '../../_lib/profile.js';
 import { clearSessionCookie, deleteAppSession, getAppSession, getCookie, SESSION_COOKIE } from '../../_lib/session.js';
 import { handleError, json } from '../../_lib/http.js';
+import type { AppEnv } from '../../_lib/types.js';
 
-export async function onRequestGet({ request, env }) {
+export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const appSession = await getAppSession(env, request);
     if (!appSession) {
@@ -14,9 +15,9 @@ export async function onRequestGet({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};
 
-export async function onRequestDelete({ request, env }) {
+export const onRequestDelete: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const sessionId = getCookie(request, SESSION_COOKIE);
     if (sessionId) {
@@ -34,5 +35,4 @@ export async function onRequestDelete({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
-
+};

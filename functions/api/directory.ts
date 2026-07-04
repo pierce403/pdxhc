@@ -1,7 +1,8 @@
 import { listProfiles } from '../_lib/profile.js';
 import { handleError, json } from '../_lib/http.js';
+import type { AppEnv } from '../_lib/types.js';
 
-export async function onRequestGet({ request, env }) {
+export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const url = new URL(request.url);
     const query = url.searchParams.get('q') || '';
@@ -15,4 +16,4 @@ export async function onRequestGet({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};

@@ -67,6 +67,13 @@ const mimeTypes = new Map([
   ['.ico', 'image/x-icon']
 ]);
 
+type MetaKey = 'title' | 'description' | 'url' | 'image' | 'imageWidth' | 'imageHeight' | 'twitterCard';
+type MetaSnapshot = Record<MetaKey, string | null>;
+
+function isOutsideViewport(left: number | null, right: number | null, clientWidth: number): boolean {
+  return left === null || right === null || left < -1 || right > clientWidth + 1;
+}
+
 await mkdir(screenshotDir, { recursive: true });
 
 const server = createServer(async (request, response) => {
@@ -126,9 +133,9 @@ const server = createServer(async (request, response) => {
   }
 });
 
-await new Promise((resolve, reject) => {
+await new Promise<void>((resolve, reject) => {
   server.once('error', reject);
-  server.listen(port, '127.0.0.1', resolve);
+  server.listen(port, '127.0.0.1', () => resolve());
 });
 
 const browser = await chromium.launch({
@@ -140,8 +147,8 @@ try {
   const page = await browser.newPage();
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
 
-  const meta = await page.evaluate(() => {
-    const read = (selector) => document.querySelector(selector)?.getAttribute('content') || null;
+  const meta = await page.evaluate<MetaSnapshot>(() => {
+    const read = (selector: string): string | null => document.querySelector(selector)?.getAttribute('content') || null;
     return {
       title: read('meta[property="og:title"]'),
       description: read('meta[property="og:description"]'),
@@ -162,7 +169,7 @@ try {
     twitterCard: 'summary_large_image'
   };
 
-  for (const [key, expected] of Object.entries(expectedMeta)) {
+  for (const [key, expected] of Object.entries(expectedMeta) as [MetaKey, string][]) {
     if (meta[key] !== expected) {
       throw new Error(`Unexpected ${key}: expected "${expected}", got "${meta[key]}"`);
     }
@@ -203,7 +210,7 @@ try {
       throw new Error(`${viewport.name} has horizontal overflow: ${layout.scrollWidth} > ${layout.clientWidth}`);
     }
 
-    if (layout.h1Left === null || layout.h1Left < -1 || layout.h1Right > layout.clientWidth + 1) {
+    if (isOutsideViewport(layout.h1Left, layout.h1Right, layout.clientWidth)) {
       throw new Error(`${viewport.name} H1 is outside the viewport: ${JSON.stringify(layout)}`);
     }
 
@@ -223,9 +230,7 @@ try {
     });
 
     if (
-      profileLayout.panelLeft === null ||
-      profileLayout.panelLeft < -1 ||
-      profileLayout.panelRight > profileLayout.clientWidth + 1
+      isOutsideViewport(profileLayout.panelLeft, profileLayout.panelRight, profileLayout.clientWidth)
     ) {
       throw new Error(`${viewport.name} profile panel is outside the viewport: ${JSON.stringify(profileLayout)}`);
     }
@@ -249,12 +254,8 @@ try {
     });
 
     if (
-      directoryLayout.searchLeft === null ||
-      directoryLayout.searchLeft < -1 ||
-      directoryLayout.searchRight > directoryLayout.clientWidth + 1 ||
-      directoryLayout.listingLeft === null ||
-      directoryLayout.listingLeft < -1 ||
-      directoryLayout.listingRight > directoryLayout.clientWidth + 1
+      isOutsideViewport(directoryLayout.searchLeft, directoryLayout.searchRight, directoryLayout.clientWidth) ||
+      isOutsideViewport(directoryLayout.listingLeft, directoryLayout.listingRight, directoryLayout.clientWidth)
     ) {
       throw new Error(`${viewport.name} directory layout is outside the viewport: ${JSON.stringify(directoryLayout)}`);
     }
@@ -275,9 +276,7 @@ try {
     });
 
     if (
-      accountLayout.shellLeft === null ||
-      accountLayout.shellLeft < -1 ||
-      accountLayout.shellRight > accountLayout.clientWidth + 1
+      isOutsideViewport(accountLayout.shellLeft, accountLayout.shellRight, accountLayout.clientWidth)
     ) {
       throw new Error(`${viewport.name} account layout is outside the viewport: ${JSON.stringify(accountLayout)}`);
     }
@@ -309,12 +308,8 @@ try {
     });
 
     if (
-      editorLayout.heroLeft === null ||
-      editorLayout.heroLeft < -1 ||
-      editorLayout.heroRight > editorLayout.clientWidth + 1 ||
-      editorLayout.editorLeft === null ||
-      editorLayout.editorLeft < -1 ||
-      editorLayout.editorRight > editorLayout.clientWidth + 1
+      isOutsideViewport(editorLayout.heroLeft, editorLayout.heroRight, editorLayout.clientWidth) ||
+      isOutsideViewport(editorLayout.editorLeft, editorLayout.editorRight, editorLayout.clientWidth)
     ) {
       throw new Error(`${viewport.name} account editor layout is outside the viewport: ${JSON.stringify(editorLayout)}`);
     }
@@ -337,9 +332,7 @@ try {
     });
 
     if (
-      publicLayout.cardLeft === null ||
-      publicLayout.cardLeft < -1 ||
-      publicLayout.cardRight > publicLayout.clientWidth + 1
+      isOutsideViewport(publicLayout.cardLeft, publicLayout.cardRight, publicLayout.clientWidth)
     ) {
       throw new Error(`${viewport.name} public profile layout is outside the viewport: ${JSON.stringify(publicLayout)}`);
     }
@@ -379,7 +372,7 @@ try {
     }
 
     for (const button of endorsementLayout.buttons) {
-      if (button.left < -1 || button.right > endorsementLayout.clientWidth + 1) {
+      if (isOutsideViewport(button.left, button.right, endorsementLayout.clientWidth)) {
         throw new Error(`${viewport.name} endorsement button is outside the viewport: ${JSON.stringify(endorsementLayout)}`);
       }
     }
@@ -389,10 +382,13 @@ try {
 
   await page.setViewportSize({ width: 1200, height: 630 });
   await page.goto(`${baseUrl}/og-card.png`, { waitUntil: 'load' });
-  const ogSize = await page.locator('img').evaluate((img) => ({
-    width: img.naturalWidth,
-    height: img.naturalHeight
-  }));
+  const ogSize = await page.locator('img').evaluate((img) => {
+    const image = img as HTMLImageElement;
+    return {
+      width: image.naturalWidth,
+      height: image.naturalHeight
+    };
+  });
 
   if (ogSize.width !== 1200 || ogSize.height !== 630) {
     throw new Error(`Unexpected OG image size: ${ogSize.width}x${ogSize.height}`);
@@ -406,5 +402,5 @@ try {
   console.log(`Verified layout screenshots in ${path.relative(root, screenshotDir)}`);
 } finally {
   await browser.close();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }

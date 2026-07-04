@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "og:image": "node scripts/generate-og-card.mjs",
-    "verify:layout": "node scripts/verify-layout.mjs",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.functions.json && tsc --noEmit -p tsconfig.node.json",
+    "og:image": "node scripts/generate-og-card.mts",
+    "verify:layout": "node scripts/verify-layout.mts",
     "preview": "vite preview --host 0.0.0.0",
     "cf:preview": "npm run build && wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=pdxhc"
@@ -19,9 +20,12 @@
     "vue": "latest"
   },
   "devDependencies": {
+    "@types/node": "^26.1.0",
     "@vitejs/plugin-vue": "latest",
     "playwright": "^1.61.1",
+    "typescript": "^6.0.3",
     "vite": "latest",
+    "vue-tsc": "^3.3.6",
     "wrangler": "latest"
   }
 }

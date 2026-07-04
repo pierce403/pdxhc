@@ -1,7 +1,8 @@
 import { json, jsonError } from '../_lib/http.js';
 import { getClientMetadata } from '../_lib/oauth.js';
+import type { AppEnv } from '../_lib/types.js';
 
-export async function onRequestGet(context) {
+export const onRequestGet: PagesFunction<AppEnv, 'path'> = async (context) => {
   const path = Array.isArray(context.params.path)
     ? context.params.path.join('/')
     : context.params.path || '';
@@ -15,5 +16,4 @@ export async function onRequestGet(context) {
       'cache-control': 'public, max-age=300'
     }
   });
-}
-
+};

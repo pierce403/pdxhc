@@ -2,8 +2,9 @@ import { createOAuthClient, getBlueskyProfile } from '../../../_lib/oauth.js';
 import { redirect } from '../../../_lib/http.js';
 import { createAppSession, sessionCookie } from '../../../_lib/session.js';
 import { upsertProfileFromBluesky } from '../../../_lib/profile.js';
+import type { AppEnv, BlueskyProfile } from '../../../_lib/types.js';
 
-export async function onRequestGet({ request, env }) {
+export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   const client = createOAuthClient(env);
   const params = new URL(request.url).searchParams;
 
@@ -11,7 +12,7 @@ export async function onRequestGet({ request, env }) {
     const { session, state } = await client.callback(params);
     const did = session.did;
 
-    let bskyProfile = {};
+    let bskyProfile: BlueskyProfile = {};
     try {
       bskyProfile = await getBlueskyProfile(session);
     } catch (error) {
@@ -29,22 +30,22 @@ export async function onRequestGet({ request, env }) {
     console.error('Bluesky OAuth callback failed', error);
     return redirect('/?auth=error#profile');
   }
-}
+};
 
-function readReturnTo(state, fallback) {
-  if (!state) {
+function readReturnTo(state: unknown, fallback: string): string {
+  if (typeof state !== 'string' || !state) {
     return fallback;
   }
 
   try {
     const parsed = JSON.parse(state);
-    return safeReturnTo(parsed.returnTo, fallback);
+    return safeReturnTo(isRecord(parsed) ? parsed.returnTo : undefined, fallback);
   } catch {
     return fallback;
   }
 }
 
-function safeReturnTo(value, fallback) {
+function safeReturnTo(value: unknown, fallback: string): string {
   if (typeof value !== 'string') {
     return fallback;
   }
@@ -52,3 +53,6 @@ function safeReturnTo(value, fallback) {
   return value.startsWith('/') && !value.startsWith('//') ? value : fallback;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}

@@ -1,8 +1,9 @@
 import { ensureProfile, getProfile, updateProfile } from '../_lib/profile.js';
 import { getAppSession } from '../_lib/session.js';
 import { handleError, HttpError, json, readJson } from '../_lib/http.js';
+import type { AppEnv, AppSession } from '../_lib/types.js';
 
-export async function onRequestGet({ request, env }) {
+export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const appSession = await requireSession(env, request);
     const profile = (await getProfile(env, appSession.did)) || (await ensureProfile(env, appSession.did));
@@ -11,9 +12,9 @@ export async function onRequestGet({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};
 
-export async function onRequestPut({ request, env }) {
+export const onRequestPut: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const appSession = await requireSession(env, request);
     await ensureProfile(env, appSession.did);
@@ -25,9 +26,9 @@ export async function onRequestPut({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};
 
-async function requireSession(env, request) {
+async function requireSession(env: AppEnv, request: Request): Promise<AppSession> {
   const appSession = await getAppSession(env, request);
   if (!appSession) {
     throw new HttpError('Authentication required', 401);
@@ -35,4 +36,3 @@ async function requireSession(env, request) {
 
   return appSession;
 }
-

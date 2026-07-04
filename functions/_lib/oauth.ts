@@ -1,12 +1,30 @@
-import { NodeOAuthClient } from '@atproto/oauth-client-node';
+import {
+  NodeOAuthClient,
+  type NodeOAuthClientOptions,
+  type NodeSavedSession,
+  type NodeSavedSessionStore,
+  type NodeSavedState,
+  type NodeSavedStateStore,
+  type OAuthSession,
+  type RuntimeLock
+} from '@atproto/oauth-client-node';
 import { createD1RequestLock, createJsonStore } from './data.js';
+import type { AppEnv, BlueskyProfile } from './types.js';
 
-export function getPublicOrigin(env) {
+type DidResolverOption = NonNullable<NodeOAuthClientOptions['didResolver']>;
+type ClientMetadataInput = NodeOAuthClientOptions['clientMetadata'];
+
+interface DidDocument {
+  id?: string;
+  [key: string]: unknown;
+}
+
+export function getPublicOrigin(env: AppEnv): string {
   return (env.PUBLIC_ORIGIN || 'https://pdxhc.org').replace(/\/+$/, '');
 }
 
-export function getClientMetadata(env) {
-  const origin = getPublicOrigin(env);
+export function getClientMetadata(env: AppEnv): ClientMetadataInput {
+  const origin = getPublicOrigin(env) as `https://${string}`;
 
   return {
     client_id: `${origin}/oauth/client-metadata.json`,
@@ -23,19 +41,19 @@ export function getClientMetadata(env) {
   };
 }
 
-export function createOAuthClient(env) {
+export function createOAuthClient(env: AppEnv): NodeOAuthClient {
   return new NodeOAuthClient({
     clientMetadata: getClientMetadata(env),
-    stateStore: createJsonStore(env.DB, 'oauth_states', { ttlSeconds: 10 * 60 }),
-    sessionStore: createJsonStore(env.DB, 'oauth_sessions'),
-    requestLock: createD1RequestLock(env.DB),
-    didResolver: createWorkersDidResolver(),
+    stateStore: createJsonStore<NodeSavedState>(env.DB, 'oauth_states', { ttlSeconds: 10 * 60 }) as NodeSavedStateStore,
+    sessionStore: createJsonStore<NodeSavedSession>(env.DB, 'oauth_sessions') as NodeSavedSessionStore,
+    requestLock: createD1RequestLock(env.DB) as RuntimeLock,
+    didResolver: createWorkersDidResolver() as DidResolverOption,
     handleResolver: 'https://bsky.social',
     fetch: fetchWithoutRedirects
   });
 }
 
-export async function getBlueskyProfile(sessionOrDid) {
+export async function getBlueskyProfile(sessionOrDid: string | Pick<OAuthSession, 'did'>): Promise<BlueskyProfile> {
   const actor = typeof sessionOrDid === 'string' ? sessionOrDid : sessionOrDid.did;
   if (!actor) {
     return {};
@@ -55,12 +73,13 @@ export async function getBlueskyProfile(sessionOrDid) {
     throw new Error(`Unable to fetch Bluesky profile: ${response.status}`);
   }
 
-  return response.json();
+  const body = await response.json();
+  return isRecord(body) ? (body as BlueskyProfile) : {};
 }
 
 function createWorkersDidResolver() {
   return {
-    async resolve(did, options = {}) {
+    async resolve(did: string, options: { signal?: AbortSignal } = {}) {
       const url = didToDocumentUrl(did);
       const response = await fetchWithoutRedirects(url, {
         redirect: 'error',
@@ -76,7 +95,7 @@ function createWorkersDidResolver() {
       }
 
       const document = await response.json();
-      if (!document || document.id !== did) {
+      if (!isDidDocument(document) || document.id !== did) {
         throw new Error(`Resolved DID document does not match ${did}`);
       }
 
@@ -85,7 +104,7 @@ function createWorkersDidResolver() {
   };
 }
 
-function didToDocumentUrl(did) {
+function didToDocumentUrl(did: string): string {
   if (did.startsWith('did:plc:')) {
     return `https://plc.directory/${encodeURIComponent(did)}`;
   }
@@ -108,7 +127,7 @@ function didToDocumentUrl(did) {
   return `${protocol}://${host}/${parts.join('/')}/did.json`;
 }
 
-async function fetchWithoutRedirects(input, init = {}) {
+async function fetchWithoutRedirects(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   if (init.redirect !== 'error') {
     return globalThis.fetch(input, init);
   }
@@ -120,8 +139,16 @@ async function fetchWithoutRedirects(input, init = {}) {
 
   if (response.status >= 300 && response.status < 400) {
     response.body?.cancel?.();
-    throw new TypeError(`Redirect rejected for ${new URL(input instanceof Request ? input.url : input).origin}`);
+    throw new TypeError(`Redirect rejected for ${new URL(input instanceof Request ? input.url : input.toString()).origin}`);
   }
 
   return response;
+}
+
+function isDidDocument(value: unknown): value is DidDocument {
+  return isRecord(value) && typeof value.id === 'string';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }

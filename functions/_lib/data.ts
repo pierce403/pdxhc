@@ -1,6 +1,27 @@
 const STORE_TABLES = new Set(['oauth_states', 'oauth_sessions']);
 
-export function createJsonStore(db, table, options = {}) {
+type StoreTable = 'oauth_states' | 'oauth_sessions';
+
+interface JsonStoreOptions {
+  ttlSeconds?: number;
+}
+
+interface JsonStore<T> {
+  get(key: string): Promise<T | undefined>;
+  set(key: string, value: T): Promise<void>;
+  del(key: string): Promise<void>;
+}
+
+interface StoreRow {
+  value: string;
+  expires_at: number | null;
+}
+
+export function createJsonStore<T = unknown>(
+  db: D1Database,
+  table: StoreTable,
+  options: JsonStoreOptions = {}
+): JsonStore<T> {
   if (!STORE_TABLES.has(table)) {
     throw new TypeError(`Unsupported store table: ${table}`);
   }
@@ -12,7 +33,7 @@ export function createJsonStore(db, table, options = {}) {
       const row = await db
         .prepare(`SELECT value, expires_at FROM ${table} WHERE key = ?1`)
         .bind(key)
-        .first();
+        .first<StoreRow>();
 
       if (!row) {
         return undefined;
@@ -23,7 +44,7 @@ export function createJsonStore(db, table, options = {}) {
         return undefined;
       }
 
-      return JSON.parse(row.value);
+      return JSON.parse(row.value) as T;
     },
 
     async set(key, value) {
@@ -47,8 +68,8 @@ export function createJsonStore(db, table, options = {}) {
   };
 }
 
-export function createD1RequestLock(db) {
-  return async (name, fn) => {
+export function createD1RequestLock(db: D1Database) {
+  return async <T>(name: string, fn: () => PromiseLike<T> | T): Promise<T> => {
     const token = crypto.randomUUID();
     const startedAt = Date.now();
 
@@ -70,7 +91,7 @@ export function createD1RequestLock(db) {
   };
 }
 
-async function acquireLock(db, name, token) {
+async function acquireLock(db: D1Database, name: string, token: string): Promise<boolean> {
   const expiresAt = nowSeconds() + 15;
   const result = await db
     .prepare(
@@ -87,11 +108,10 @@ async function acquireLock(db, name, token) {
   return Boolean(result.meta?.changes);
 }
 
-export function nowSeconds() {
+export function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-

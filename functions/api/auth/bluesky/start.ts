@@ -1,9 +1,10 @@
 import { createOAuthClient } from '../../../_lib/oauth.js';
-import { handleError, HttpError, json, readJson } from '../../../_lib/http.js';
+import { handleError, HttpError, json, readJsonObject } from '../../../_lib/http.js';
+import type { AppEnv } from '../../../_lib/types.js';
 
-export async function onRequestPost({ request, env }) {
+export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
-    const body = await readJson(request);
+    const body = await readJsonObject(request);
     const handle = normalizeHandle(body.handle);
     const returnTo = safeReturnTo(body.returnTo, '/?auth=success#profile');
 
@@ -16,9 +17,9 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};
 
-function normalizeHandle(value) {
+function normalizeHandle(value: unknown): string {
   if (typeof value !== 'string') {
     throw new HttpError('Bluesky handle is required', 422);
   }
@@ -31,11 +32,10 @@ function normalizeHandle(value) {
   return handle;
 }
 
-function safeReturnTo(value, fallback) {
+function safeReturnTo(value: unknown, fallback: string): string {
   if (typeof value !== 'string') {
     return fallback;
   }
 
   return value.startsWith('/') && !value.startsWith('//') ? value : fallback;
 }
-

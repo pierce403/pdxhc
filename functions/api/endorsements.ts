@@ -4,12 +4,13 @@ import {
   removeSkillEndorsement
 } from '../_lib/profile.js';
 import { getAppSession } from '../_lib/session.js';
-import { handleError, HttpError, json, readJson } from '../_lib/http.js';
+import { handleError, HttpError, json, readJsonObject } from '../_lib/http.js';
+import type { AppEnv, AppSession, JsonObject } from '../_lib/types.js';
 
-export async function onRequestPost({ request, env }) {
+export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const appSession = await requireSession(env, request);
-    const body = await readJson(request);
+    const body = await readJsonObject(request);
     const { profileDid, skill } = readEndorsementInput(body);
 
     await ensureProfile(env, appSession.did);
@@ -19,12 +20,12 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};
 
-export async function onRequestDelete({ request, env }) {
+export const onRequestDelete: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const appSession = await requireSession(env, request);
-    const body = await readJson(request);
+    const body = await readJsonObject(request);
     const { profileDid, skill } = readEndorsementInput(body);
 
     const profile = await removeSkillEndorsement(env, profileDid, skill, appSession.did);
@@ -33,9 +34,9 @@ export async function onRequestDelete({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};
 
-async function requireSession(env, request) {
+async function requireSession(env: AppEnv, request: Request): Promise<AppSession> {
   const appSession = await getAppSession(env, request);
   if (!appSession) {
     throw new HttpError('Authentication required', 401);
@@ -44,7 +45,7 @@ async function requireSession(env, request) {
   return appSession;
 }
 
-function readEndorsementInput(body) {
+function readEndorsementInput(body: JsonObject): { profileDid: string; skill: string } {
   const profileDid = typeof body.profile_did === 'string' ? body.profile_did.trim() : '';
   const skill = typeof body.skill === 'string' ? body.skill.trim() : '';
 

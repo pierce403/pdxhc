@@ -2,8 +2,9 @@ import { getBlueskyProfile } from '../../_lib/oauth.js';
 import { upsertProfileFromBluesky } from '../../_lib/profile.js';
 import { getAppSession } from '../../_lib/session.js';
 import { handleError, HttpError, json } from '../../_lib/http.js';
+import type { AppEnv } from '../../_lib/types.js';
 
-export async function onRequestPost({ request, env }) {
+export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => {
   try {
     const appSession = await getAppSession(env, request);
     if (!appSession) {
@@ -17,4 +18,4 @@ export async function onRequestPost({ request, env }) {
   } catch (error) {
     return handleError(error);
   }
-}
+};

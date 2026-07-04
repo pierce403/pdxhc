@@ -6,15 +6,15 @@ Use this skill when touching Bluesky auth, profile editing, directory search, pu
 
 - `src/App.vue` - routed Vue UI for landing, account, directory, and public profile views.
 - `src/style.css` - layout and responsive behavior.
-- `functions/_lib/profile.js` - profile persistence, normalization, validation, and directory search.
-- `functions/_lib/oauth.js` - ATProto OAuth and public Bluesky profile lookup.
-- `functions/api/profile.js` - authenticated profile update API.
-- `functions/api/profile/sync-bluesky.js` - authenticated Bluesky sync API.
-- `functions/api/profiles/[[did]].js` - public profile API.
-- `functions/api/directory.js` - public directory API.
+- `functions/_lib/profile.ts` - profile persistence, normalization, validation, and directory search.
+- `functions/_lib/oauth.ts` - ATProto OAuth and public Bluesky profile lookup.
+- `functions/api/profile.ts` - authenticated profile update API.
+- `functions/api/profile/sync-bluesky.ts` - authenticated Bluesky sync API.
+- `functions/api/profiles/[[did]].ts` - public profile API.
+- `functions/api/directory.ts` - public directory API.
 - `migrations/` - D1 schema changes.
 - `public/_redirects` - direct SPA route rewrites.
-- `scripts/verify-layout.mjs` - Playwright layout coverage.
+- `scripts/verify-layout.mts` - Playwright layout coverage.
 
 ## Rules
 

@@ -78,7 +78,7 @@ XDG_CONFIG_HOME=/tmp/pdxhc-wrangler-config WRANGLER_LOG_PATH=/tmp/pdxhc-wrangler
 ## Agent Tips
 
 - Start important tasks by checking `git status --short`, this file, `MEMORY.md`, and `SKILLS.md`.
-- For UI work, update `scripts/verify-layout.mjs` when adding important routes or states.
+- For UI work, update `scripts/verify-layout.mts` when adding important routes or states.
 - For deploy work, verify both the custom domain and an API route after deployment.
 - Keep production facts out of vague prose; write exact command lines and IDs when they are not secret.
 - Do not put secrets into files or logs. Passing tokens through environment variables is acceptable.
