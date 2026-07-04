@@ -1,10 +1,12 @@
-import { getProfile } from '../../_lib/profile.js';
+import { getPublicProfile } from '../../_lib/profile.js';
 import { handleError, HttpError, json } from '../../_lib/http.js';
+import { getAppSession } from '../../_lib/session.js';
 
-export async function onRequestGet({ params, env }) {
+export async function onRequestGet({ request, params, env }) {
   try {
     const did = readDid(params.did);
-    const profile = await getProfile(env, did);
+    const appSession = await getAppSession(env, request);
+    const profile = await getPublicProfile(env, did, appSession?.did || '');
 
     if (!profile) {
       throw new HttpError('Profile not found', 404);

@@ -26,6 +26,37 @@ const mockProfile = {
   bio: 'Builds practical web apps, deployment pipelines, and security-minded internal tools for local teams.',
   updated_at: 1783120000
 };
+const mockViewerProfile = {
+  ...mockProfile,
+  did: 'did:plc:layoutviewer',
+  handle: 'viewer.bsky.social',
+  display_name: 'Layout Viewer',
+  headline: 'Automation and security review',
+  skills: ['Automation', 'Security review']
+};
+const mockPublicProfile = {
+  ...mockProfile,
+  skill_endorsements: [
+    { skill: 'Cloudflare Workers', skill_key: 'cloudflare workers', count: 3, endorsed_by_viewer: false },
+    { skill: 'Vue', skill_key: 'vue', count: 2, endorsed_by_viewer: false },
+    { skill: 'AppSec', skill_key: 'appsec', count: 1, endorsed_by_viewer: false }
+  ],
+  timeline: [
+    {
+      id: 'timeline-layout-1',
+      type: 'skill_endorsement',
+      skill: 'Cloudflare Workers',
+      message: '',
+      created_at: 1783120000,
+      actor: {
+        did: 'did:plc:endorser',
+        handle: 'endorser.bsky.social',
+        display_name: 'Local Endorser',
+        avatar_url: ''
+      }
+    }
+  ]
+};
 
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -45,8 +76,12 @@ const server = createServer(async (request, response) => {
 
     if (requestedPath === '/api/auth/session') {
       const isMockAuthenticated = request.headers.cookie?.includes('mock-auth=1');
+      const isMockViewer = request.headers.cookie?.includes('mock-viewer=1');
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify({ authenticated: isMockAuthenticated, profile: isMockAuthenticated ? mockProfile : null }));
+      response.end(JSON.stringify({
+        authenticated: isMockAuthenticated || isMockViewer,
+        profile: isMockViewer ? mockViewerProfile : isMockAuthenticated ? mockProfile : null
+      }));
       return;
     }
 
@@ -58,7 +93,7 @@ const server = createServer(async (request, response) => {
 
     if (requestedPath === `/api/profiles/${mockProfile.did}`) {
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify({ profile: mockProfile }));
+      response.end(JSON.stringify({ profile: mockPublicProfile }));
       return;
     }
 
@@ -308,6 +343,48 @@ try {
     ) {
       throw new Error(`${viewport.name} public profile layout is outside the viewport: ${JSON.stringify(publicLayout)}`);
     }
+
+    await page.context().addCookies([
+      {
+        name: 'mock-viewer',
+        value: '1',
+        domain: '127.0.0.1',
+        path: '/'
+      }
+    ]);
+    await page.goto(`${baseUrl}/u/${mockProfile.did}`, { waitUntil: 'networkidle' });
+    await page.screenshot({
+      path: path.join(screenshotDir, `public-profile-auth-${viewport.name}.png`),
+      fullPage: false
+    });
+
+    const endorsementLayout = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('.endorse-button')).map((button) => {
+        const rect = button.getBoundingClientRect();
+        return {
+          left: rect.left,
+          right: rect.right
+        };
+      });
+
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        buttonCount: buttons.length,
+        buttons
+      };
+    });
+
+    if (endorsementLayout.buttonCount !== mockPublicProfile.skills.length) {
+      throw new Error(`${viewport.name} endorsement buttons are missing: ${JSON.stringify(endorsementLayout)}`);
+    }
+
+    for (const button of endorsementLayout.buttons) {
+      if (button.left < -1 || button.right > endorsementLayout.clientWidth + 1) {
+        throw new Error(`${viewport.name} endorsement button is outside the viewport: ${JSON.stringify(endorsementLayout)}`);
+      }
+    }
+
+    await page.context().clearCookies();
   }
 
   await page.setViewportSize({ width: 1200, height: 630 });

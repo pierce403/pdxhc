@@ -16,13 +16,16 @@ import {
   LogOut,
   MapPin,
   Pencil,
+  Plus,
   RefreshCw,
   Save,
   Search,
   ShieldCheck,
+  ThumbsUp,
   UserRound,
   UserRoundPlus,
-  UsersRound
+  UsersRound,
+  X
 } from '@lucide/vue';
 import heroUrl from './assets/pdxhc-hero.webp';
 
@@ -37,6 +40,33 @@ const hackerValue = [
   'Show availability, specialties, and preferred work shape',
   'Get discovered by businesses looking for your kind of work'
 ];
+
+const commonSkillOptions = [
+  'AppSec',
+  'Automation',
+  'Cloudflare Workers',
+  'Data pipelines',
+  'DevOps',
+  'D1',
+  'Embedded systems',
+  'Firmware',
+  'Hardware debugging',
+  'Incident response',
+  'Internal tools',
+  'LLM apps',
+  'Network security',
+  'Node.js',
+  'Postgres',
+  'Product prototyping',
+  'Python',
+  'Reliability',
+  'Reverse engineering',
+  'Security review',
+  'Systems programming',
+  'TypeScript',
+  'Vue'
+];
+const maxProfileSkills = 12;
 
 const currentPath = ref(window.location.pathname);
 const sessionLoading = ref(true);
@@ -55,7 +85,11 @@ const profile = ref(null);
 const publicProfile = ref(null);
 const publicProfileLoading = ref(false);
 const publicProfileError = ref('');
-const skillsText = ref('');
+const profileSkills = ref([]);
+const skillInput = ref('');
+const skillPickerError = ref('');
+const endorsementLoadingKey = ref('');
+const endorsementError = ref('');
 const directoryProfiles = ref([]);
 const directoryQuery = ref('');
 const directoryLoading = ref(true);
@@ -118,6 +152,20 @@ const authNavLabel = computed(() =>
 const isOwnPublicProfile = computed(
   () => Boolean(profile.value?.did && publicProfile.value?.did && profile.value.did === publicProfile.value.did)
 );
+const selectedSkillKeys = computed(() => new Set(profileSkills.value.map(normalizeSkillKey)));
+const filteredSkillSuggestions = computed(() => {
+  const input = normalizeSkillKey(skillInput.value);
+  return commonSkillOptions
+    .filter((skill) => {
+      const key = normalizeSkillKey(skill);
+      return !selectedSkillKeys.value.has(key) && (!input || key.includes(input));
+    })
+    .slice(0, 8);
+});
+const canAddSkillInput = computed(() => {
+  const skill = normalizeSkillLabel(skillInput.value);
+  return Boolean(skill && !selectedSkillKeys.value.has(normalizeSkillKey(skill)));
+});
 const directorySummary = computed(() => {
   const count = directoryProfiles.value.length;
   const profileLabel = count === 1 ? 'profile' : 'profiles';
@@ -209,7 +257,7 @@ async function saveProfile() {
       },
       body: JSON.stringify({
         ...profileForm,
-        skills: splitSkills(skillsText.value)
+        skills: profileSkills.value
       })
     });
     const data = await response.json().catch(() => ({}));
@@ -320,6 +368,46 @@ async function loadPublicProfile(did) {
   }
 }
 
+async function toggleSkillEndorsement(skill) {
+  if (!publicProfile.value || !isAuthenticated.value || isOwnPublicProfile.value) {
+    if (!isAuthenticated.value) {
+      navigate('/account');
+    }
+    return;
+  }
+
+  const endorsement = skillEndorsement(publicProfile.value, skill);
+  const skillKey = normalizeSkillKey(skill);
+  endorsementLoadingKey.value = skillKey;
+  endorsementError.value = '';
+
+  try {
+    const response = await fetch('/api/endorsements', {
+      method: endorsement.endorsed_by_viewer ? 'DELETE' : 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        profile_did: publicProfile.value.did,
+        skill
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.profile) {
+      throw new Error(data.error || 'Unable to update endorsement');
+    }
+
+    publicProfile.value = data.profile;
+    await loadDirectory();
+  } catch (error) {
+    endorsementError.value = error instanceof Error ? error.message : 'Unable to update endorsement';
+  } finally {
+    endorsementLoadingKey.value = '';
+  }
+}
+
 function scheduleDirectorySearch() {
   window.clearTimeout(directorySearchTimer);
   directorySearchTimer = window.setTimeout(() => {
@@ -349,14 +437,60 @@ function applyProfile(nextProfile) {
   profileForm.website = nextProfile.website || '';
   profileForm.linkedin_url = nextProfile.linkedin_url || '';
   profileForm.bio = nextProfile.bio || '';
-  skillsText.value = Array.isArray(nextProfile.skills) ? nextProfile.skills.join(', ') : '';
+  profileSkills.value = Array.isArray(nextProfile.skills) ? nextProfile.skills.map(normalizeSkillLabel).filter(Boolean) : [];
+  skillInput.value = '';
+  skillPickerError.value = '';
 }
 
-function splitSkills(value) {
-  return value
+function addSkillFromInput() {
+  addSkill(skillInput.value);
+}
+
+function addSkill(value) {
+  const parts = String(value || '')
     .split(',')
-    .map((skill) => skill.trim())
+    .map(normalizeSkillLabel)
     .filter(Boolean);
+
+  if (!parts.length) {
+    return;
+  }
+
+  skillPickerError.value = '';
+  const nextSkills = [...profileSkills.value];
+  const nextKeys = new Set(nextSkills.map(normalizeSkillKey));
+
+  for (const skill of parts) {
+    const key = normalizeSkillKey(skill);
+    if (nextKeys.has(key)) {
+      continue;
+    }
+
+    if (nextSkills.length >= maxProfileSkills) {
+      skillPickerError.value = `Choose up to ${maxProfileSkills} skills`;
+      break;
+    }
+
+    nextSkills.push(skill);
+    nextKeys.add(key);
+  }
+
+  profileSkills.value = nextSkills;
+  skillInput.value = '';
+}
+
+function removeSkill(skill) {
+  const key = normalizeSkillKey(skill);
+  profileSkills.value = profileSkills.value.filter((profileSkill) => normalizeSkillKey(profileSkill) !== key);
+  skillPickerError.value = '';
+}
+
+function normalizeSkillLabel(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+}
+
+function normalizeSkillKey(value) {
+  return normalizeSkillLabel(value).toLowerCase();
 }
 
 function readAuthRedirect() {
@@ -455,6 +589,58 @@ function publicProfilePath(directoryProfile) {
 
 function blueskyProfileUrl(directoryProfile) {
   return directoryProfile?.handle ? `https://bsky.app/profile/${directoryProfile.handle}` : '';
+}
+
+function skillEndorsement(profileLike, skill) {
+  const key = normalizeSkillKey(skill);
+  const endorsement = Array.isArray(profileLike?.skill_endorsements)
+    ? profileLike.skill_endorsements.find((item) => item.skill_key === key)
+    : null;
+
+  return endorsement || {
+    skill,
+    skill_key: key,
+    count: 0,
+    endorsed_by_viewer: false
+  };
+}
+
+function canEndorseSkill(skill) {
+  return Boolean(
+    skill &&
+      publicProfile.value?.did &&
+      isAuthenticated.value &&
+      !isOwnPublicProfile.value
+  );
+}
+
+function endorsementButtonLabel(skill) {
+  const endorsement = skillEndorsement(publicProfile.value, skill);
+  return endorsement.endorsed_by_viewer ? 'Endorsed' : 'Endorse';
+}
+
+function timelineActorName(event) {
+  return event?.actor?.display_name || event?.actor?.handle || 'A local hacker';
+}
+
+function timelineText(event) {
+  if (event?.type === 'skill_endorsement' && event.skill) {
+    return `${timelineActorName(event)} endorsed ${event.skill}`;
+  }
+
+  return event?.message || 'Profile activity';
+}
+
+function formatTimelineTime(value) {
+  if (!value) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date(value * 1000));
 }
 
 function profileCoverStyle(profileLike) {
@@ -961,10 +1147,46 @@ function profileCoverStyle(profileLike) {
                   <BadgeCheck :size="20" aria-hidden="true" />
                   <h3>About and skills</h3>
                 </div>
-                <label class="field wide" for="skills">
+                <div class="field wide skill-picker-field">
                   <span>Skills</span>
-                  <input id="skills" v-model="skillsText" type="text" placeholder="Vue, Workers, AppSec, hardware debugging" />
-                </label>
+                  <div class="skill-picker">
+                    <div v-if="profileSkills.length" class="selected-skills">
+                      <span v-for="skill in profileSkills" :key="skill" class="selected-skill">
+                        {{ skill }}
+                        <button type="button" :aria-label="`Remove ${skill}`" @click="removeSkill(skill)">
+                          <X :size="14" aria-hidden="true" />
+                        </button>
+                      </span>
+                    </div>
+
+                    <div class="skill-entry">
+                      <input
+                        id="skills"
+                        v-model="skillInput"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="Vue, Workers, AppSec"
+                        @keydown.enter.prevent="addSkillFromInput"
+                      />
+                      <button class="icon-button" type="button" title="Add skill" aria-label="Add skill" :disabled="!canAddSkillInput" @click="addSkillFromInput">
+                        <Plus :size="18" aria-hidden="true" />
+                      </button>
+                    </div>
+
+                    <div v-if="filteredSkillSuggestions.length" class="skill-suggestions">
+                      <button
+                        v-for="skill in filteredSkillSuggestions"
+                        :key="skill"
+                        type="button"
+                        @click="addSkill(skill)"
+                      >
+                        {{ skill }}
+                      </button>
+                    </div>
+
+                    <p v-if="skillPickerError" class="status error">{{ skillPickerError }}</p>
+                  </div>
+                </div>
 
                 <label class="field wide" for="bio">
                   <span>Profile bio</span>
@@ -1163,10 +1385,57 @@ function profileCoverStyle(profileLike) {
                 <BadgeCheck :size="20" aria-hidden="true" />
                 <h2>Skills</h2>
               </div>
-              <div v-if="publicProfile.skills.length" class="tag-row">
-                <span v-for="skill in publicProfile.skills" :key="`${publicProfile.did}-${skill}`">{{ skill }}</span>
+              <div v-if="publicProfile.skills.length" class="public-skill-list">
+                <article v-for="skill in publicProfile.skills" :key="`${publicProfile.did}-${skill}`" class="public-skill">
+                  <div>
+                    <h3>{{ skill }}</h3>
+                    <p>{{ skillEndorsement(publicProfile, skill).count }} endorsements</p>
+                  </div>
+                  <button
+                    v-if="canEndorseSkill(skill)"
+                    class="button endorse-button"
+                    :class="{ active: skillEndorsement(publicProfile, skill).endorsed_by_viewer }"
+                    type="button"
+                    :disabled="endorsementLoadingKey === normalizeSkillKey(skill)"
+                    @click="toggleSkillEndorsement(skill)"
+                  >
+                    <LoaderCircle v-if="endorsementLoadingKey === normalizeSkillKey(skill)" class="spinner" :size="16" aria-hidden="true" />
+                    <ThumbsUp v-else :size="16" aria-hidden="true" />
+                    {{ endorsementButtonLabel(skill) }}
+                  </button>
+                </article>
               </div>
               <p v-else class="detail-copy">No skills listed yet.</p>
+              <p v-if="endorsementError" class="status error">{{ endorsementError }}</p>
+            </section>
+
+            <section class="editor-panel timeline-panel">
+              <div class="panel-title">
+                <CalendarClock :size="20" aria-hidden="true" />
+                <h2>Timeline</h2>
+              </div>
+              <div v-if="publicProfile.timeline?.length" class="timeline-list">
+                <article v-for="event in publicProfile.timeline" :key="event.id" class="timeline-event">
+                  <img
+                    v-if="event.actor?.avatar_url"
+                    class="timeline-avatar"
+                    :src="event.actor.avatar_url"
+                    alt=""
+                    width="40"
+                    height="40"
+                  />
+                  <span v-else class="timeline-avatar avatar-fallback">
+                    <AtSign :size="17" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p>{{ timelineText(event) }}</p>
+                    <time v-if="event.created_at" :datetime="new Date(event.created_at * 1000).toISOString()">
+                      {{ formatTimelineTime(event.created_at) }}
+                    </time>
+                  </div>
+                </article>
+              </div>
+              <p v-else class="detail-copy">No activity yet.</p>
             </section>
           </div>
         </article>

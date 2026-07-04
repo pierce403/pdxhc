@@ -29,6 +29,24 @@ export async function getProfile(env, did) {
   return row ? normalizeProfileRow(row) : null;
 }
 
+export async function getPublicProfile(env, did, viewerDid = '') {
+  const profile = await getProfile(env, did);
+  if (!profile) {
+    return null;
+  }
+
+  const [skillEndorsements, timeline] = await Promise.all([
+    listSkillEndorsements(env, did, profile.skills, viewerDid),
+    listTimelineEvents(env, did)
+  ]);
+
+  return {
+    ...profile,
+    skill_endorsements: skillEndorsements,
+    timeline
+  };
+}
+
 export async function ensureProfile(env, did) {
   await env.DB.prepare('INSERT OR IGNORE INTO profiles (did) VALUES (?1)').bind(did).run();
   return getProfile(env, did);
@@ -90,6 +108,64 @@ export async function updateProfile(env, did, input) {
   return getProfile(env, did);
 }
 
+export async function endorseSkill(env, profileDid, skill, endorserDid) {
+  if (profileDid === endorserDid) {
+    throw new HttpError('You cannot endorse your own profile', 422);
+  }
+
+  const profile = await getProfile(env, profileDid);
+  if (!profile) {
+    throw new HttpError('Profile not found', 404);
+  }
+
+  const endorsedSkill = findProfileSkill(profile.skills, skill);
+  if (!endorsedSkill) {
+    throw new HttpError('That skill is not listed on this profile', 422);
+  }
+
+  const skillKey = normalizeSkillKey(endorsedSkill);
+  const result = await env.DB.prepare(
+    `INSERT OR IGNORE INTO skill_endorsements (id, profile_did, skill, skill_key, endorser_did, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, unixepoch())`
+  )
+    .bind(crypto.randomUUID(), profileDid, endorsedSkill, skillKey, endorserDid)
+    .run();
+
+  if ((result.meta?.changes || 0) > 0) {
+    await env.DB.prepare(
+      `INSERT INTO timeline_events (id, profile_did, actor_did, type, skill, created_at)
+       VALUES (?1, ?2, ?3, 'skill_endorsement', ?4, unixepoch())`
+    )
+      .bind(crypto.randomUUID(), profileDid, endorserDid, endorsedSkill)
+      .run();
+  }
+
+  return getPublicProfile(env, profileDid, endorserDid);
+}
+
+export async function removeSkillEndorsement(env, profileDid, skill, endorserDid) {
+  const profile = await getProfile(env, profileDid);
+  if (!profile) {
+    throw new HttpError('Profile not found', 404);
+  }
+
+  const endorsedSkill = findProfileSkill(profile.skills, skill);
+  if (!endorsedSkill) {
+    throw new HttpError('That skill is not listed on this profile', 422);
+  }
+
+  await env.DB.prepare(
+    `DELETE FROM skill_endorsements
+     WHERE profile_did = ?1
+       AND skill_key = ?2
+       AND endorser_did = ?3`
+  )
+    .bind(profileDid, normalizeSkillKey(endorsedSkill), endorserDid)
+    .run();
+
+  return getPublicProfile(env, profileDid, endorserDid);
+}
+
 export async function listProfiles(env, query = '') {
   const sanitizedQuery = optionalString(query, 120);
   const baseWhere =
@@ -136,6 +212,70 @@ export async function listProfiles(env, query = '') {
 
   const result = await statement.all();
   return (result.results || []).map(normalizeDirectoryProfile);
+}
+
+async function listSkillEndorsements(env, did, skills, viewerDid) {
+  if (!skills.length) {
+    return [];
+  }
+
+  const result = await env.DB.prepare(
+    `SELECT skill_key,
+            COUNT(*) AS count,
+            MAX(CASE WHEN endorser_did = ?2 THEN 1 ELSE 0 END) AS endorsed_by_viewer
+     FROM skill_endorsements
+     WHERE profile_did = ?1
+     GROUP BY skill_key`
+  )
+    .bind(did, viewerDid || '')
+    .all();
+
+  const endorsementMap = new Map(
+    (result.results || []).map((row) => [
+      row.skill_key,
+      {
+        count: Number(row.count || 0),
+        endorsed_by_viewer: Boolean(row.endorsed_by_viewer)
+      }
+    ])
+  );
+
+  return skills.map((skill) => {
+    const skill_key = normalizeSkillKey(skill);
+    const endorsement = endorsementMap.get(skill_key) || {
+      count: 0,
+      endorsed_by_viewer: false
+    };
+
+    return {
+      skill,
+      skill_key,
+      ...endorsement
+    };
+  });
+}
+
+async function listTimelineEvents(env, did) {
+  const result = await env.DB.prepare(
+    `SELECT events.id,
+            events.type,
+            events.skill,
+            events.message,
+            events.actor_did,
+            events.created_at,
+            actors.handle AS actor_handle,
+            actors.display_name AS actor_display_name,
+            actors.avatar_url AS actor_avatar_url
+     FROM timeline_events AS events
+     LEFT JOIN profiles AS actors ON actors.did = events.actor_did
+     WHERE events.profile_did = ?1
+     ORDER BY events.created_at DESC
+     LIMIT 30`
+  )
+    .bind(did)
+    .all();
+
+  return (result.results || []).map(normalizeTimelineEvent);
 }
 
 export function normalizeProfileRow(row) {
@@ -199,12 +339,16 @@ function sanitizeSkills(value) {
       ? value.split(',')
       : [];
 
-  const skills = rawSkills
-    .map((skill) => optionalString(skill, 40))
-    .filter(Boolean)
-    .slice(0, 12);
+  const skillMap = new Map();
+  for (const rawSkill of rawSkills) {
+    const skill = normalizeSkillLabel(rawSkill);
+    const key = normalizeSkillKey(skill);
+    if (skill && !skillMap.has(key)) {
+      skillMap.set(key, skill);
+    }
+  }
 
-  return Array.from(new Set(skills));
+  return Array.from(skillMap.values()).slice(0, 12);
 }
 
 function parseSkills(value) {
@@ -214,6 +358,39 @@ function parseSkills(value) {
   } catch {
     return [];
   }
+}
+
+function normalizeTimelineEvent(row) {
+  return {
+    id: row.id,
+    type: row.type || '',
+    skill: row.skill || '',
+    message: row.message || '',
+    created_at: row.created_at || null,
+    actor: {
+      did: row.actor_did || '',
+      handle: row.actor_handle || '',
+      display_name: row.actor_display_name || '',
+      avatar_url: row.actor_avatar_url || ''
+    }
+  };
+}
+
+function findProfileSkill(skills, value) {
+  const key = normalizeSkillKey(value);
+  return skills.find((skill) => normalizeSkillKey(skill) === key) || '';
+}
+
+export function normalizeSkillLabel(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim().replace(/\s+/g, ' ').slice(0, 40);
+}
+
+export function normalizeSkillKey(value) {
+  return normalizeSkillLabel(value).toLowerCase();
 }
 
 function validateWebsite(value) {
