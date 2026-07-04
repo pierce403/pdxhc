@@ -71,6 +71,10 @@ The production D1 binding is named `DB` and points at the `pdxhc` database.
 - `/u/<did>` is a public profile page, for example `/u/did:plc:example`.
 - `/api/directory` returns searchable public profiles for the directory.
 
+## Agent operating docs
+
+This repo keeps Recurse.bot-style operating guidance in `AGENTS.md`, with `CLAUDE.md` and `GEMINI.md` symlinked to it. Repo-local memory starts at `MEMORY.md`, and repeatable workflows are indexed in `SKILLS.md`.
+
 ## DNS
 
 Exact DNS records depend on the domain or subdomain selected for the site.
