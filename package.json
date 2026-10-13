@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "vite build && wrangler pages functions build functions --outdir dist/.functions --output-routes-path dist/_routes.json --compatibility-date 2026-07-02 --compatibility-flags nodejs_compat && node scripts/finish-pages-build.mjs",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.functions.json && tsc --noEmit -p tsconfig.node.json",
     "og:image": "node scripts/generate-og-card.mts",
     "verify:layout": "node scripts/verify-layout.mts",
