@@ -48,3 +48,10 @@ XDG_CONFIG_HOME=/tmp/pdxhc-wrangler-config WRANGLER_LOG_PATH=/tmp/pdxhc-wrangler
 - If Wrangler reports an invalid access token, run `cf auth whoami` to refresh the OAuth token stored by the `cf` CLI, then retry.
 - Local Pages and Playwright checks may need escalation because the sandbox can block binding `127.0.0.1`.
 - For Cloudflare Pages SPA routes, `public/_redirects` should rewrite `/account` and `/u/*` to `/`, not `/index.html`.
+
+## October 2026 dependency verification
+
+- `npm audit fix` updated the lockfile without changing direct dependency ranges; the resulting clean `npm ci` reported zero advisories. `npm run typecheck`, `npm run build`, and `npm run verify:layout` passed.
+- With Wrangler 4.150.0, the three D1 migrations applied to `.wrangler/state` locally. A local Pages preview returned HTTP 200 for `/`, `/account`, and `/api/directory` (empty local directory JSON).
+- This repository has no GitHub Pages site or GitHub Actions workflow. Cloudflare Pages **does** run a Git-connected preview build on a PR; the older manual deploy commands are not the only possible release path. Verify its Cloudflare build result before merging and verify the exact production deployment after merging.
+- The October 13 preview for dependency PR #2 built Vite successfully on Cloudflare Node 22.16.0, then failed while Cloudflare's internal Wrangler 3.114.17 bundled Pages Functions: patched `undici_v7` and `undici_v8` import `node:sqlite`, which that bundler could not resolve. The PR must stay draft until a compatible Functions build path is verified. Cloudflare also warned that `undici_v8` needs Node >=22.19.0.
